@@ -746,13 +746,14 @@ function DashboardView() {
     queryKey: ['sales-chart', 'today'],
     queryFn: () => api.getSales({ period: 'daily', days: '7' }),
   });
-  const { data: recentInvoices } = useQuery({
+  const { data: recentInvoicesRes, isLoading: invoicesLoading } = useQuery({
     queryKey: ['recent-invoices'],
     queryFn: () => api.getInvoices({ limit: '10', sort: 'newest' }),
   });
+  const recentInvoices = recentInvoicesRes?.data || [];
 
   const summaryCards = [
-    { title: 'مبيعات اليوم', value: `${fmt(summary?.todaySales || 0)} ر.س`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50', iconBg: 'bg-emerald-100' },
+    { title: 'مبيعات اليوم', value: `${fmt(summary?.totalSales || 0)} ر.س`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50', iconBg: 'bg-emerald-100' },
     { title: 'عدد الفواتير', value: String(summary?.invoiceCount || 0), icon: Receipt, color: 'text-blue-600', bg: 'bg-blue-50', iconBg: 'bg-blue-100' },
     { title: 'متوسط الطلب', value: `${fmt(summary?.avgOrder || 0)} ر.س`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50', iconBg: 'bg-purple-100' },
     { title: 'أفضل منتج', value: summary?.topProduct || '—', icon: Sparkles, color: 'text-amber-600', bg: 'bg-amber-50', iconBg: 'bg-amber-100' },
@@ -825,7 +826,9 @@ function DashboardView() {
           <CardTitle className="text-base">أحدث الفواتير</CardTitle>
         </CardHeader>
         <CardContent>
-          {(!recentInvoices || recentInvoices.length === 0) ? (
+          {invoicesLoading ? (
+            <div className="space-y-2 py-4"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+          ) : !recentInvoices || recentInvoices.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">لا توجد فواتير</p>
           ) : (
             <Table>
@@ -838,7 +841,7 @@ function DashboardView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(recentInvoices || []).slice(0, 5).map((inv: any) => (
+                {recentInvoices.slice(0, 5).map((inv: any) => (
                   <TableRow key={inv.id}>
                     <TableCell className="font-mono text-xs">#{inv.id?.slice(-6)}</TableCell>
                     <TableCell className="text-xs">{new Date(inv.createdAt).toLocaleString('ar-SA')}</TableCell>

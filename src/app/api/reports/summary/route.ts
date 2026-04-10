@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { getSession, requireRole } from '@/lib/auth';
+import { getSession } from '@/lib/auth';
+
+function getDateRange(period: string) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+  switch (period) {
+    case 'week': {
+      const dayOfWeek = now.getDay() || 7; // Sunday = 7 in ISO
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1);
+      return { start: weekStart, end: now };
+    }
+    case 'month': {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { start: monthStart, end: now };
+    }
+    default: {
+      return { start: todayStart, end: todayEnd };
+    }
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,76 +31,58 @@ export async function GET(request: NextRequest) {
     }
 
     const companyId = auth.user.companyId;
+    const { searchParams } = new URL(request.url);
+    const period = searchParams.get('period') || 'today';
+    const branchId = searchParams.get('branchId');
 
-    // Today's date range
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const { start, end } = getDateRange(period);
 
-    // This month's date range
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-    const whereBase = {
+    const whereBase: Record<string, unknown> = {
       companyId,
       deletedAt: null,
     };
 
+    if (branchId) {
+      whereBase.branchId = branchId;
+    }
+
     const invoiceWhereBase = {
       ...whereBase,
       status: 'paid',
+      createdAt: { gte: start, lt: end },
     };
 
-    // Parallel queries for summary data
-    const [
-      todaySales,
-      todayInvoices,
-      monthSales,
-      monthInvoices,
-      topProducts,
-      openInvoices,
-      cancelledInvoices,
-    ] = await Promise.all([
-      // Total sales today
+    // Parallel queries
+    const [salesResult, invoiceCount, topProducts, openInvoices, cancelledInvoices] = await Promise.all([
       db.invoice.aggregate({
-        where: { ...invoiceWhereBase, createdAt: { gte: todayStart, lt: todayEnd } },
-        _sum: { total: true },
+        where: invoiceWhereBase,
+        _sum: { total: true, subtotal: true, taxAmount: true, discount: true },
       }),
-      // Number of invoices today
       db.invoice.count({
-        where: { ...invoiceWhereBase, createdAt: { gte: todayStart, lt: todayEnd } },
+        where: invoiceWhereBase,
       }),
-      // Total sales this month
-      db.invoice.aggregate({
-        where: { ...invoiceWhereBase, createdAt: { gte: monthStart, lt: monthEnd } },
-        _sum: { total: true },
-      }),
-      // Number of invoices this month
-      db.invoice.count({
-        where: { ...invoiceWhereBase, createdAt: { gte: monthStart, lt: monthEnd } },
-      }),
-      // Top selling products this month
       db.invoiceItem.groupBy({
         by: ['productId'],
         where: {
-          invoice: {
-            ...invoiceWhereBase,
-            createdAt: { gte: monthStart, lt: monthEnd },
-          },
+          invoice: invoiceWhereBase,
         },
         _sum: { quantity: true, total: true },
         orderBy: { _sum: { total: 'desc' } },
         take: 10,
       }),
-      // Open invoices count
       db.invoice.count({
         where: { ...whereBase, status: 'open' },
       }),
-      // Cancelled invoices count
       db.invoice.count({
         where: { ...whereBase, status: 'cancelled' },
       }),
     ]);
+
+    const totalSales = Math.round((salesResult._sum.total || 0) * 100) / 100;
+    const subtotalSales = Math.round((salesResult._sum.subtotal || 0) * 100) / 100;
+    const totalTax = Math.round((salesResult._sum.taxAmount || 0) * 100) / 100;
+    const totalDiscount = Math.round((salesResult._sum.discount || 0) * 100) / 100;
+    const avgOrder = invoiceCount > 0 ? Math.round((totalSales / invoiceCount) * 100) / 100 : 0;
 
     // Fetch product names for top products
     const topProductsWithNames = await Promise.all(
@@ -107,25 +110,18 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    const todayTotal = todaySales._sum.total || 0;
-    const todayAvg = todayInvoices > 0 ? todayTotal / todayInvoices : 0;
-    const monthTotal = monthSales._sum.total || 0;
-    const monthAvg = monthInvoices > 0 ? monthTotal / monthInvoices : 0;
-
     return NextResponse.json({
-      today: {
-        totalSales: Math.round(todayTotal * 100) / 100,
-        invoiceCount: todayInvoices,
-        averageOrderValue: Math.round(todayAvg * 100) / 100,
-      },
-      thisMonth: {
-        totalSales: Math.round(monthTotal * 100) / 100,
-        invoiceCount: monthInvoices,
-        averageOrderValue: Math.round(monthAvg * 100) / 100,
-      },
+      totalSales,
+      subtotalSales,
+      totalTax,
+      totalDiscount,
+      invoiceCount,
+      avgOrder,
+      netProfit: totalSales,
+      topProduct: topProductsWithNames[0]?.name || '—',
+      topProducts: topProductsWithNames,
       openInvoices,
       cancelledInvoices,
-      topProducts: topProductsWithNames,
     });
   } catch (error) {
     console.error('Dashboard summary error:', error);
