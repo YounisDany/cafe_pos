@@ -1,0 +1,1968 @@
+'use client';
+
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
+import { useAppStore, type View, type CartItem } from '@/lib/store';
+import { api } from '@/lib/api';
+import {
+  LayoutDashboard, ShoppingCart, FileText, Package, FolderOpen,
+  Building2, Users, BarChart3, Search, LogOut, Plus, Minus,
+  Trash2, X, Fullscreen, Maximize2, Coffee, Printer,
+  ChevronDown, CircleDot, CreditCard, Banknote, Clock,
+  TrendingUp, DollarSign, Receipt, Eye, Edit, MoreVertical,
+  RefreshCw, CheckCircle, XCircle, AlertCircle, Loader2,
+  ArrowUpDown, Filter, CalendarDays, Shield, Menu, UserCircle,
+  Home, Store, ChevronLeft, Phone, MapPin, Hash, Percent,
+  Sparkles, MousePointerClick, Keyboard
+} from 'lucide-react';
+
+// shadcn/ui imports
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger
+} from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel
+} from '@/components/ui/alert-dialog';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from '@/components/ui/select';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter
+} from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  SidebarProvider, Sidebar, SidebarContent, SidebarFooter, SidebarGroup,
+  SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu,
+  SidebarMenuButton, SidebarMenuItem, SidebarRail, SidebarTrigger, SidebarInset
+} from '@/components/ui/sidebar';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator
+} from '@/components/ui/dropdown-menu';
+
+// ─── Category emoji/icon mapping ───
+const CATEGORY_EMOJIS: Record<string, string> = {
+  coffee: '☕', tea: '🍵', juice: '🧃', cake: '🎂', pastry: '🥐',
+  sandwich: '🥪', salad: '🥗', burger: '🍔', pizza: '🍕', pasta: '🍝',
+  dessert: '🍮', icecream: '🍦', water: '💧', smoothie: '🥤', bread: '🍞',
+  cheese: '🧀', egg: '🥚', soup: '🍲', rice: '🍚', fish: '🐟',
+  chicken: '🍗', meat: '🥩', fruit: '🍎', vegetable: '🥦', snack: '🍿',
+  chocolate: '🍫', candy: '🍬', donut: '🍩', croissant: '🥐', muffin: '🧁',
+  default: '📦',
+};
+
+function getCategoryEmoji(categoryName?: string, categoryIcon?: string): string {
+  if (categoryIcon && CATEGORY_EMOJIS[categoryIcon]) return CATEGORY_EMOJIS[categoryIcon];
+  if (categoryName) {
+    const key = categoryName.toLowerCase().trim();
+    for (const [k, v] of Object.entries(CATEGORY_EMOJIS)) {
+      if (key.includes(k)) return v;
+    }
+  }
+  return CATEGORY_EMOJIS.default;
+}
+
+// ─── QueryClient ───
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 30000, retry: 1, refetchOnWindowFocus: false },
+  },
+});
+
+// ─── Currency formatter ───
+const fmt = (n: number) => n.toFixed(2);
+
+// ─── Role helpers ───
+function isOwner(role?: string) { return role === 'owner'; }
+function isManager(role?: string) { return role === 'owner' || role === 'manager'; }
+
+// ─── Animated page wrapper ───
+const pageVariants = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } },
+  exit: { opacity: 0, y: -12, transition: { duration: 0.15 } },
+};
+
+function AnimatedPage({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit" className={className}>
+      {children}
+    </motion.div>
+  );
+}
+
+// ─── Status badge helpers ───
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    paid: { label: 'مدفوعة', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    pending: { label: 'معلقة', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+    cancelled: { label: 'ملغاة', cls: 'bg-red-100 text-red-700 border-red-200' },
+    open: { label: 'مفتوحة', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+    held: { label: 'مؤجلة', cls: 'bg-purple-100 text-purple-700 border-purple-200' },
+    active: { label: 'نشط', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    inactive: { label: 'غير نشط', cls: 'bg-gray-100 text-gray-500 border-gray-200' },
+  };
+  const s = map[status] || { label: status, cls: 'bg-gray-100 text-gray-600 border-gray-200' };
+  return <Badge variant="outline" className={s.cls}>{s.label}</Badge>;
+}
+
+function RoleBadge({ role }: { role: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    owner: { label: 'مالك', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+    manager: { label: 'مدير', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+    cashier: { label: 'كاشير', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  };
+  const s = map[role] || { label: role, cls: 'bg-gray-100 text-gray-600 border-gray-200' };
+  return <Badge variant="outline" className={s.cls}>{s.label}</Badge>;
+}
+
+// ─── Time Display ───
+function TimeDisplay() {
+  const [time, setTime] = useState(new Date());
+  useEffect(() => {
+    const i = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(i);
+  }, []);
+  return (
+    <div className="text-xs text-muted-foreground font-mono">
+      {time.toLocaleDateString('ar-SA', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+      <span className="mx-1">|</span>
+      {time.toLocaleTimeString('ar-SA')}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// LOGIN SCREEN
+// ═══════════════════════════════════════════════════════
+function LoginScreen() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const setAuth = useAppStore(s => s.setAuth);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) { toast.error('يرجى إدخال البريد الإلكتروني وكلمة المرور'); return; }
+    setLoading(true);
+    try {
+      const res = await api.login(email, password);
+      setAuth(res.user, res.token, res.company, res.branch);
+      toast.success(`مرحباً ${res.user.name}!`);
+    } catch (err: any) {
+      toast.error(err.message || 'فشل تسجيل الدخول');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        className="w-full max-w-md"
+      >
+        <Card className="border-0 shadow-2xl shadow-amber-900/10 bg-white/90 backdrop-blur-sm">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center mb-4 shadow-lg shadow-amber-500/25">
+              <Coffee className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold bg-gradient-to-l from-amber-700 to-amber-900 bg-clip-text text-transparent">
+              CafePOS
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">نظام نقاط البيع للمقاهي والمطاعم</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email">البريد الإلكتروني</Label>
+                <Input
+                  id="email" type="email" placeholder="email@example.com" dir="ltr"
+                  value={email} onChange={e => setEmail(e.target.value)}
+                  className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">كلمة المرور</Label>
+                <Input
+                  id="password" type="password" placeholder="••••••••" dir="ltr"
+                  value={password} onChange={e => setPassword(e.target.value)}
+                  className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                />
+              </div>
+              <Button
+                type="submit" className="w-full h-11 bg-gradient-to-l from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-semibold shadow-lg shadow-amber-500/25 transition-all"
+                disabled={loading}
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'تسجيل الدخول'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+        <p className="text-center text-xs text-muted-foreground mt-6">
+          © {new Date().getFullYear()} CafePOS — جميع الحقوق محفوظة
+        </p>
+      </motion.div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// RECEIPT PRINT COMPONENT
+// ═══════════════════════════════════════════════════════
+function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void }) {
+  const company = useAppStore(s => s.company);
+  const branch = useAppStore(s => s.branch);
+
+  useEffect(() => {
+    setTimeout(() => window.print(), 300);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-[9999] bg-white p-0 print:p-0">
+      <div className="hidden print:block">
+        {/* Receipt for 80mm thermal printer */}
+        <div className="w-[80mm] mx-auto p-2 font-mono text-xs" dir="rtl" style={{ fontFamily: 'monospace' }}>
+          <div className="text-center mb-2">
+            <h1 className="text-base font-bold">{company?.name || 'المقهى'}</h1>
+            <p className="text-[10px]">{branch?.name || ''}</p>
+            <p className="text-[10px]">{branch?.address || ''}</p>
+            <p className="text-[10px]">هاتف: {branch?.phone || ''}</p>
+          </div>
+          <div className="border-t border-dashed border-gray-400 my-2" />
+          <div className="flex justify-between text-[10px]">
+            <span>فاتورة #{invoice.id?.slice(-6)}</span>
+            <span>{new Date(invoice.createdAt).toLocaleString('ar-SA')}</span>
+          </div>
+          <div className="text-[10px] mb-1">الكاشير: {invoice.cashierName || '-'}</div>
+          <div className="border-t border-dashed border-gray-400 my-2" />
+          {(invoice.items || []).map((item: any, i: number) => (
+            <div key={i} className="mb-1">
+              <div className="flex justify-between text-[11px] font-bold">
+                <span>{item.name}</span>
+                <span>{fmt(item.price * item.quantity)}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-600">
+                <span>{fmt(item.price)} × {item.quantity}</span>
+                <span />
+              </div>
+            </div>
+          ))}
+          <div className="border-t border-dashed border-gray-400 my-2" />
+          <div className="space-y-1 text-[11px]">
+            <div className="flex justify-between"><span>المجموع الفرعي</span><span>{fmt(invoice.subtotal)}</span></div>
+            {invoice.discount > 0 && (
+              <div className="flex justify-between text-red-600"><span>الخصم</span><span>-{fmt(invoice.discount)}</span></div>
+            )}
+            <div className="flex justify-between"><span>الضريبة {(invoice.taxRate || 15)}%</span><span>{fmt(invoice.tax)}</span></div>
+            <div className="border-t border-dashed border-gray-400 my-1" />
+            <div className="flex justify-between text-sm font-bold text-base">
+              <span>الإجمالي</span><span>{fmt(invoice.total)} ر.س</span>
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span>طريقة الدفع</span>
+              <span>{invoice.paymentMethod === 'cash' ? 'نقدي' : invoice.paymentMethod === 'card' ? 'بطاقة' : '-'}</span>
+            </div>
+            {invoice.paymentMethod === 'cash' && invoice.amountReceived > 0 && (
+              <>
+                <div className="flex justify-between"><span>المبلغ المدفوع</span><span>{fmt(invoice.amountReceived)}</span></div>
+                <div className="flex justify-between font-bold"><span>الباقي</span><span>{fmt(invoice.change)}</span></div>
+              </>
+            )}
+          </div>
+          <div className="border-t border-dashed border-gray-400 my-2" />
+          <div className="text-center text-[10px] mt-2">
+            <p>شكراً لزيارتكم!</p>
+            <p>نتمنى لكم يوماً سعيداً ☕</p>
+          </div>
+        </div>
+      </div>
+      {/* Screen-only close button */}
+      <div className="print:hidden fixed bottom-8 left-1/2 -translate-x-1/2">
+        <Button onClick={onClose} size="lg" className="bg-amber-600 hover:bg-amber-700">
+          <X className="w-4 h-4 ml-2" /> إغلاق
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// PAYMENT DIALOG
+// ═══════════════════════════════════════════════════════
+function PaymentDialog() {
+  const { paymentDialogOpen, setPaymentDialogOpen, cart, getSubtotal, getTax, getTotal, discount, clearCart, currentInvoiceId } = useAppStore();
+  const [method, setMethod] = useState<'cash' | 'card'>('cash');
+  const [amountReceived, setAmountReceived] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const [paidInvoice, setPaidInvoice] = useState<any>(null);
+  const qClient = useQueryClient();
+
+  const subtotal = getSubtotal();
+  const tax = getTax();
+  const total = getTotal();
+  const change = amountReceived ? Math.max(0, parseFloat(amountReceived) - total) : 0;
+
+  const handlePay = async () => {
+    if (method === 'cash' && parseFloat(amountReceived) < total) {
+      toast.error('المبلغ المدفوع أقل من الإجمالي');
+      return;
+    }
+    setPaying(true);
+    try {
+      const invoiceData = {
+        items: cart.map(c => ({ productId: c.productId, name: c.name, price: c.price, quantity: c.quantity })),
+        subtotal, discount, tax, total,
+        paymentMethod: method,
+        amountReceived: method === 'cash' ? parseFloat(amountReceived) : total,
+        change: method === 'cash' ? change : 0,
+      };
+      let invoice: any;
+      if (currentInvoiceId) {
+        invoice = await api.payInvoice(currentInvoiceId, invoiceData);
+      } else {
+        invoice = await api.createInvoice(invoiceData);
+      }
+      setPaidInvoice(invoice);
+      toast.success('تم الدفع بنجاح!');
+      clearCart();
+      qClient.invalidateQueries({ queryKey: ['invoices'] });
+      qClient.invalidateQueries({ queryKey: ['dashboard'] });
+      setPaymentDialogOpen(false);
+      setShowReceipt(true);
+    } catch (err: any) {
+      toast.error(err.message || 'فشل عملية الدفع');
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  // Reset form when dialog opens
+  useEffect(() => {
+    if (paymentDialogOpen) {
+      setAmountReceived('');
+      setMethod('cash');
+    }
+  }, [paymentDialogOpen]);
+
+  if (showReceipt && paidInvoice) {
+    return <ReceiptPrint invoice={paidInvoice} onClose={() => { setShowReceipt(false); setPaidInvoice(null); }} />;
+  }
+
+  return (
+    <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+      <DialogContent className="sm:max-w-md" dir="rtl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-amber-600" /> إتمام الدفع
+          </DialogTitle>
+          <DialogDescription>يرجى اختيار طريقة الدفع وإتمام العملية</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <Tabs value={method} onValueChange={(v) => setMethod(v as 'cash' | 'card')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="cash" className="gap-2">
+                <Banknote className="w-4 h-4" /> نقدي
+              </TabsTrigger>
+              <TabsTrigger value="card" className="gap-2">
+                <CreditCard className="w-4 h-4" /> بطاقة
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <div className="bg-amber-50 rounded-lg p-3 space-y-1 text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">المجموع الفرعي</span><span>{fmt(subtotal)} ر.س</span></div>
+            {discount > 0 && <div className="flex justify-between text-red-600"><span>الخصم</span><span>-{fmt(discount)} ر.س</span></div>}
+            <div className="flex justify-between"><span className="text-muted-foreground">الضريبة 15%</span><span>{fmt(tax)} ر.س</span></div>
+            <Separator />
+            <div className="flex justify-between text-lg font-bold text-amber-800"><span>الإجمالي</span><span>{fmt(total)} ر.س</span></div>
+          </div>
+
+          {method === 'cash' && (
+            <div className="space-y-2">
+              <Label>المبلغ المدفوع</Label>
+              <Input
+                type="number" dir="ltr" placeholder="0.00"
+                value={amountReceived} onChange={e => setAmountReceived(e.target.value)}
+                className="text-lg h-12 font-mono"
+                autoFocus
+              />
+              {amountReceived && parseFloat(amountReceived) >= total && (
+                <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                  <span className="text-sm text-muted-foreground">الباقي</span>
+                  <p className="text-xl font-bold text-emerald-700">{fmt(change)} ر.س</p>
+                </div>
+              )}
+              {amountReceived && parseFloat(amountReceived) < total && parseFloat(amountReceived) > 0 && (
+                <p className="text-sm text-red-600">المبلغ المدفوع أقل من الإجمالي بـ {fmt(total - parseFloat(amountReceived))} ر.س</p>
+              )}
+              {/* Quick cash buttons */}
+              <div className="grid grid-cols-3 gap-2">
+                {[total, Math.ceil(total / 5) * 5, Math.ceil(total / 10) * 10, 50, 100, 200].filter((v, i, a) => a.indexOf(v) === i && v >= total).slice(0, 3).map(v => (
+                  <Button key={v} variant="outline" onClick={() => setAmountReceived(String(v))} className="text-xs font-mono">
+                    {fmt(v)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {method === 'card' && (
+            <div className="text-center py-6 text-muted-foreground">
+              <CreditCard className="w-12 h-12 mx-auto mb-2 text-amber-300" />
+              <p>سيتم إتمام الدفع عبر البطاقة</p>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>إلغاء</Button>
+          <Button
+            onClick={handlePay} disabled={paying || (method === 'cash' && (!amountReceived || parseFloat(amountReceived) < total))}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[120px]"
+          >
+            {paying ? <Loader2 className="w-4 h-4 animate-spin" /> : <><CheckCircle className="w-4 h-4 ml-1" /> تأكيد الدفع</>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// POS VIEW
+// ═══════════════════════════════════════════════════════
+function POSView() {
+  const { cart, addToCart, updateCartQuantity, removeFromCart, clearCart, getSubtotal, getTax, getTotal, discount, setDiscount, setPaymentDialogOpen, currentInvoiceId } = useAppStore();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Fetch categories
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.getCategories(),
+  });
+
+  // Fetch products
+  const { data: products = [], isLoading: productsLoading } = useQuery({
+    queryKey: ['products', selectedCategory],
+    queryFn: () => api.getProducts(selectedCategory !== 'all' ? { categoryId: selectedCategory } : undefined),
+  });
+
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return products;
+    const q = searchQuery.toLowerCase();
+    return products.filter((p: any) => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q));
+  }, [products, searchQuery]);
+
+  const subtotal = getSubtotal();
+  const tax = getTax();
+  const total = getTotal();
+
+  const handleProductClick = (product: any) => {
+    addToCart({
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      quantity: 1,
+      total: product.price,
+    });
+  };
+
+  return (
+    <div className="flex h-[calc(100vh-64px)] gap-0">
+      {/* Left Panel - Products */}
+      <div className="flex-1 flex flex-col min-w-0 border-l border-border">
+        {/* Category Tabs */}
+        <div className="border-b border-border bg-white px-4 py-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+            <Button
+              size="sm" variant={selectedCategory === 'all' ? 'default' : 'outline'}
+              onClick={() => setSelectedCategory('all')}
+              className={`shrink-0 rounded-full ${selectedCategory === 'all' ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
+            >
+              <Package className="w-3.5 h-3.5 ml-1" /> الكل
+            </Button>
+            {categories.map((cat: any) => (
+              <Button
+                key={cat.id} size="sm" variant={selectedCategory === cat.id ? 'default' : 'outline'}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`shrink-0 rounded-full ${selectedCategory === cat.id ? 'bg-amber-600 hover:bg-amber-700' : ''}`}
+              >
+                <span className="ml-1">{getCategoryEmoji(cat.name, cat.icon)}</span>
+                {cat.name}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-2 border-b border-border bg-white">
+          <div className="relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              ref={searchRef}
+              placeholder="بحث عن منتج..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pr-9 h-10 bg-gray-50 border-gray-200"
+              dir="rtl"
+            />
+            <kbd className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+              Ctrl+K
+            </kbd>
+          </div>
+        </div>
+
+        {/* Product Grid */}
+        <div className="flex-1 overflow-y-auto p-4 bg-gray-50/50">
+          {productsLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <Skeleton key={i} className="h-[120px] rounded-lg" />
+              ))}
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <Package className="w-12 h-12 mb-2 opacity-30" />
+              <p className="text-sm">لا توجد منتجات</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {filteredProducts.map((product: any) => (
+                <motion.button
+                  key={product.id}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => handleProductClick(product)}
+                  className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all p-3 flex flex-col items-center justify-center text-center gap-1.5 h-[120px] cursor-pointer group"
+                >
+                  <span className="text-2xl group-hover:scale-110 transition-transform">
+                    {getCategoryEmoji(product.categoryName, product.categoryIcon)}
+                  </span>
+                  <p className="text-xs font-medium text-gray-800 line-clamp-2 leading-tight">{product.name}</p>
+                  <p className="text-sm font-bold text-amber-700">{fmt(product.price)}</p>
+                  <p className="text-[10px] text-muted-foreground">ر.س</p>
+                </motion.button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right Panel - Cart */}
+      <div className="w-[340px] shrink-0 flex flex-col bg-white border-r border-border hidden md:flex">
+        {/* Cart Header */}
+        <div className="px-4 py-3 border-b border-border bg-amber-50/50">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-amber-800 flex items-center gap-2">
+              <Receipt className="w-4 h-4" /> الفاتورة الحالية
+            </h3>
+            {currentInvoiceId && (
+              <Badge variant="outline" className="text-[10px] font-mono">#{currentInvoiceId.slice(-6)}</Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Cart Items */}
+        <ScrollArea className="flex-1">
+          <div className="p-3 space-y-2">
+            {cart.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                <ShoppingCart className="w-10 h-10 mb-2 opacity-30" />
+                <p className="text-sm">السلة فارغة</p>
+                <p className="text-xs">اضغط على منتج لإضافته</p>
+              </div>
+            ) : (
+              <AnimatePresence>
+                {cart.map((item) => (
+                  <motion.div
+                    key={item.productId}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors group"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">{fmt(item.price)} ر.س</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}>
+                        <Minus className="w-3 h-3" />
+                      </Button>
+                      <span className="w-8 text-center text-sm font-bold font-mono">{item.quantity}</span>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}>
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                    </div>
+                    <div className="text-left w-16">
+                      <p className="text-sm font-bold text-amber-700">{fmt(item.total)}</p>
+                    </div>
+                    <Button
+                      size="icon" variant="ghost" className="h-7 w-7 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => removeFromCart(item.productId)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            )}
+          </div>
+        </ScrollArea>
+
+        {/* Summary */}
+        {cart.length > 0 && (
+          <div className="border-t border-border p-4 space-y-3 bg-gray-50/50">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">المجموع الفرعي</span>
+              <span>{fmt(subtotal)} ر.س</span>
+            </div>
+            <div className="flex items-center justify-between text-sm gap-2">
+              <span className="text-muted-foreground">الخصم</span>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number" dir="ltr" value={discount || ''} placeholder="0"
+                  onChange={e => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-20 h-7 text-xs text-center font-mono"
+                />
+                <span className="text-xs text-muted-foreground">ر.س</span>
+              </div>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">الضريبة 15%</span>
+              <span>{fmt(tax)} ر.س</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between text-xl font-bold text-amber-800">
+              <span>الإجمالي</span>
+              <span>{fmt(total)} ر.س</span>
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="p-3 space-y-2 border-t border-border">
+          <div className="grid grid-cols-3 gap-2">
+            <Button variant="outline" size="sm" className="text-xs" onClick={clearCart} disabled={cart.length === 0}>
+              <XCircle className="w-3.5 h-3.5 ml-1" /> إغلاق
+            </Button>
+            <Button variant="secondary" size="sm" className="text-xs" disabled={cart.length === 0}>
+              <Clock className="w-3.5 h-3.5 ml-1" /> تأجيل
+            </Button>
+            <Button
+              size="sm" className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+              onClick={() => setPaymentDialogOpen(true)}
+              disabled={cart.length === 0}
+            >
+              <CheckCircle className="w-3.5 h-3.5 ml-1" /> دفع
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// DASHBOARD VIEW
+// ═══════════════════════════════════════════════════════
+function DashboardView() {
+  const { data: summary, isLoading } = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: () => api.getSummary({ period: 'today' }),
+  });
+  const { data: salesData } = useQuery({
+    queryKey: ['sales-chart', 'today'],
+    queryFn: () => api.getSales({ period: 'daily', days: '7' }),
+  });
+  const { data: recentInvoices } = useQuery({
+    queryKey: ['recent-invoices'],
+    queryFn: () => api.getInvoices({ limit: '10', sort: 'newest' }),
+  });
+
+  const summaryCards = [
+    { title: 'مبيعات اليوم', value: `${fmt(summary?.todaySales || 0)} ر.س`, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50', iconBg: 'bg-emerald-100' },
+    { title: 'عدد الفواتير', value: String(summary?.invoiceCount || 0), icon: Receipt, color: 'text-blue-600', bg: 'bg-blue-50', iconBg: 'bg-blue-100' },
+    { title: 'متوسط الطلب', value: `${fmt(summary?.avgOrder || 0)} ر.س`, icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50', iconBg: 'bg-purple-100' },
+    { title: 'أفضل منتج', value: summary?.topProduct || '—', icon: Sparkles, color: 'text-amber-600', bg: 'bg-amber-50', iconBg: 'bg-amber-100' },
+  ];
+
+  return (
+    <AnimatedPage className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">لوحة التحكم</h1>
+        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+          <CalendarDays className="w-3 h-3 ml-1" /> اليوم
+        </Badge>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {summaryCards.map((card) => (
+          <Card key={card.title} className="border-0 shadow-sm hover:shadow-md transition-shadow">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{card.title}</p>
+                  <p className={`text-xl font-bold mt-1 ${card.color}`}>{isLoading ? <Skeleton className="h-7 w-24" /> : card.value}</p>
+                </div>
+                <div className={`${card.iconBg} p-3 rounded-xl`}>
+                  <card.icon className={`w-5 h-5 ${card.color}`} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Sales Chart */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">المبيعات الأسبوعية</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[300px] w-full" />
+          ) : (
+            <div className="h-[300px] flex items-end gap-2 pt-4">
+              {(salesData?.data || []).slice(0, 7).map((d: any, i: number) => {
+                const max = Math.max(...(salesData?.data || []).map((s: any) => s.total || 0), 1);
+                const h = Math.max(4, ((d.total || 0) / max) * 100);
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <motion.div
+                      initial={{ height: 0 }}
+                      animate={{ height: `${h}%` }}
+                      transition={{ duration: 0.5, delay: i * 0.05 }}
+                      className="w-full bg-gradient-to-t from-amber-500 to-amber-400 rounded-t-md min-h-[4px]"
+                    />
+                    <span className="text-[10px] text-muted-foreground">{d.label || d.date?.slice(5) || ''}</span>
+                  </div>
+                );
+              })}
+              {(salesData?.data || []).length === 0 && (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">لا توجد بيانات</div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recent Invoices */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">أحدث الفواتير</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(!recentInvoices || recentInvoices.length === 0) ? (
+            <p className="text-sm text-muted-foreground text-center py-6">لا توجد فواتير</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>رقم الفاتورة</TableHead>
+                  <TableHead>التاريخ</TableHead>
+                  <TableHead>المبلغ</TableHead>
+                  <TableHead>الحالة</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(recentInvoices || []).slice(0, 5).map((inv: any) => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-mono text-xs">#{inv.id?.slice(-6)}</TableCell>
+                    <TableCell className="text-xs">{new Date(inv.createdAt).toLocaleString('ar-SA')}</TableCell>
+                    <TableCell className="font-bold text-amber-700">{fmt(inv.total)} ر.س</TableCell>
+                    <TableCell><StatusBadge status={inv.status} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// INVOICES VIEW
+// ═══════════════════════════════════════════════════════
+function InvoicesView() {
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+
+  const { data: invoicesData, isLoading } = useQuery({
+    queryKey: ['invoices', statusFilter, page, search],
+    queryFn: () => api.getInvoices({
+      ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
+      ...(search ? { search } : {}),
+      page: String(page), limit: '20',
+    }),
+  });
+
+  const invoices = invoicesData?.data || invoicesData || [];
+  const handleViewInvoice = async (id: string) => {
+    try {
+      const inv = await api.getInvoice(id);
+      setSelectedInvoice(inv);
+    } catch { toast.error('فشل تحميل الفاتورة'); }
+  };
+
+  if (showReceipt && selectedInvoice) {
+    return <ReceiptPrint invoice={selectedInvoice} onClose={() => setShowReceipt(false)} />;
+  }
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-xl font-bold">الفواتير</h1>
+        <div className="flex gap-2 items-center">
+          <Input placeholder="بحث..." value={search} onChange={e => setSearch(e.target.value)} className="w-48 h-9" dir="rtl" />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">الكل</SelectItem>
+              <SelectItem value="paid">مدفوعة</SelectItem>
+              <SelectItem value="pending">معلقة</SelectItem>
+              <SelectItem value="cancelled">ملغاة</SelectItem>
+              <SelectItem value="open">مفتوحة</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+          ) : invoices.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-12">لا توجد فواتير</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>رقم الفاتورة</TableHead>
+                  <TableHead>التاريخ</TableHead>
+                  <TableHead>الكاشير</TableHead>
+                  <TableHead>المبلغ</TableHead>
+                  <TableHead>طريقة الدفع</TableHead>
+                  <TableHead>الحالة</TableHead>
+                  <TableHead>إجراءات</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {invoices.map((inv: any) => (
+                  <TableRow key={inv.id}>
+                    <TableCell className="font-mono text-xs">#{inv.id?.slice(-6)}</TableCell>
+                    <TableCell className="text-xs">{new Date(inv.createdAt).toLocaleString('ar-SA')}</TableCell>
+                    <TableCell className="text-sm">{inv.cashierName || '-'}</TableCell>
+                    <TableCell className="font-bold text-amber-700">{fmt(inv.total)} ر.س</TableCell>
+                    <TableCell className="text-sm">{inv.paymentMethod === 'cash' ? 'نقدي' : inv.paymentMethod === 'card' ? 'بطاقة' : '-'}</TableCell>
+                    <TableCell><StatusBadge status={inv.status} /></TableCell>
+                    <TableCell>
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleViewInvoice(inv.id)}>
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Invoice Detail Dialog */}
+      <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
+        <DialogContent className="sm:max-w-lg" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>تفاصيل الفاتورة #{selectedInvoice?.id?.slice(-6)}</DialogTitle>
+            <DialogDescription>{new Date(selectedInvoice?.createdAt)?.toLocaleString('ar-SA')}</DialogDescription>
+          </DialogHeader>
+          {selectedInvoice && (
+            <div className="space-y-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>المنتج</TableHead>
+                    <TableHead>الكمية</TableHead>
+                    <TableHead>السعر</TableHead>
+                    <TableHead>المجموع</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(selectedInvoice.items || []).map((item: any, i: number) => (
+                    <TableRow key={i}>
+                      <TableCell>{item.name}</TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell>{fmt(item.price)}</TableCell>
+                      <TableCell className="font-bold">{fmt(item.total)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <div className="bg-amber-50 rounded-lg p-3 space-y-1 text-sm">
+                <div className="flex justify-between"><span>المجموع الفرعي</span><span>{fmt(selectedInvoice.subtotal)} ر.س</span></div>
+                {selectedInvoice.discount > 0 && <div className="flex justify-between text-red-600"><span>الخصم</span><span>-{fmt(selectedInvoice.discount)} ر.س</span></div>}
+                <div className="flex justify-between"><span>الضريبة</span><span>{fmt(selectedInvoice.tax)} ر.س</span></div>
+                <Separator />
+                <div className="flex justify-between text-lg font-bold"><span>الإجمالي</span><span>{fmt(selectedInvoice.total)} ر.س</span></div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowReceipt(true)} className="flex-1">
+                  <Printer className="w-4 h-4 ml-1" /> طباعة
+                </Button>
+                <Button variant="outline" onClick={() => setSelectedInvoice(null)} className="flex-1">إغلاق</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// PRODUCTS MANAGEMENT VIEW
+// ═══════════════════════════════════════════════════════
+function ProductsView() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [catFilter, setCatFilter] = useState('all');
+  const [form, setForm] = useState({ name: '', sku: '', price: '', cost: '', categoryId: '', active: true });
+  const qClient = useQueryClient();
+
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ['products-manage', catFilter],
+    queryFn: () => api.getProducts(catFilter !== 'all' ? { categoryId: catFilter } : undefined),
+  });
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: () => api.getCategories() });
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => api.createProduct(data),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['products'] }); toast.success('تم إضافة المنتج'); setDialogOpen(false); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateProduct(id, data),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['products'] }); toast.success('تم تحديث المنتج'); setDialogOpen(false); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteProduct(id),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['products'] }); toast.success('تم حذف المنتج'); setDeleteId(null); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const resetForm = () => setForm({ name: '', sku: '', price: '', cost: '', categoryId: '', active: true });
+
+  const openCreate = () => { resetForm(); setEditingProduct(null); setDialogOpen(true); };
+  const openEdit = (p: any) => {
+    setEditingProduct(p);
+    setForm({ name: p.name || '', sku: p.sku || '', price: String(p.price || ''), cost: String(p.cost || ''), categoryId: p.categoryId || '', active: p.active !== false });
+    setDialogOpen(true);
+  };
+  const handleSubmit = () => {
+    if (!form.name || !form.price) { toast.error('يرجى تعبئة الحقول المطلوبة'); return; }
+    const data = { ...form, price: parseFloat(form.price), cost: form.cost ? parseFloat(form.cost) : null };
+    if (editingProduct) updateMutation.mutate({ id: editingProduct.id, data });
+    else createMutation.mutate(data);
+  };
+
+  const filtered = useMemo(() => {
+    let list = products;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((p: any) => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q));
+    }
+    return list;
+  }, [products, search]);
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-xl font-bold">المنتجات</h1>
+        <div className="flex gap-2 items-center">
+          <Input placeholder="بحث..." value={search} onChange={e => setSearch(e.target.value)} className="w-48 h-9" />
+          <Select value={catFilter} onValueChange={setCatFilter}>
+            <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل التصنيفات</SelectItem>
+              {categories.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700"><Plus className="w-4 h-4 ml-1" /> إضافة</Button>
+        </div>
+      </div>
+
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-12">لا توجد منتجات</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>الاسم</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>السعر</TableHead>
+                  <TableHead>التكلفة</TableHead>
+                  <TableHead>التصنيف</TableHead>
+                  <TableHead>الحالة</TableHead>
+                  <TableHead>إجراءات</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((p: any) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-medium flex items-center gap-2">
+                      <span>{getCategoryEmoji(p.categoryName, p.categoryIcon)}</span> {p.name}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{p.sku || '-'}</TableCell>
+                    <TableCell className="font-bold text-amber-700">{fmt(p.price)}</TableCell>
+                    <TableCell>{p.cost ? fmt(p.cost) : '-'}</TableCell>
+                    <TableCell>{p.categoryName || '-'}</TableCell>
+                    <TableCell><StatusBadge status={p.active !== false ? 'active' : 'inactive'} /></TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(p)}><Edit className="w-3.5 h-3.5" /></Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500" onClick={() => setDeleteId(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{editingProduct ? 'تعديل منتج' : 'إضافة منتج جديد'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div><Label>الاسم *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>SKU</Label><Input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} dir="ltr" /></div>
+              <div><Label>السعر *</Label><Input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} dir="ltr" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>التكلفة</Label><Input type="number" value={form.cost} onChange={e => setForm({ ...form, cost: e.target.value })} dir="ltr" /></div>
+              <div>
+                <Label>التصنيف</Label>
+                <Select value={form.categoryId} onValueChange={v => setForm({ ...form, categoryId: v })}>
+                  <SelectTrigger><SelectValue placeholder="اختر تصنيف" /></SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending} className="bg-amber-600 hover:bg-amber-700">
+              {createMutation.isPending || updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'حفظ'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا المنتج؟ لا يمكن التراجع عن هذا الإجراء.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-red-600 hover:bg-red-700">
+              حذف
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// CATEGORIES MANAGEMENT VIEW
+// ═══════════════════════════════════════════════════════
+function CategoriesView() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingCat, setEditingCat] = useState<any>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: '', icon: '', description: '' });
+  const qClient = useQueryClient();
+
+  const { data: categories = [], isLoading } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => api.getCategories(),
+  });
+  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.getProducts() });
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => api.createCategory(data),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['categories'] }); toast.success('تم إضافة التصنيف'); setDialogOpen(false); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateCategory(id, data),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['categories'] }); toast.success('تم تحديث التصنيف'); setDialogOpen(false); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteCategory(id),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['categories'] }); toast.success('تم حذف التصنيف'); setDeleteId(null); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const resetForm = () => setForm({ name: '', icon: '', description: '' });
+  const openCreate = () => { resetForm(); setEditingCat(null); setDialogOpen(true); };
+  const openEdit = (c: any) => {
+    setEditingCat(c);
+    setForm({ name: c.name || '', icon: c.icon || '', description: c.description || '' });
+    setDialogOpen(true);
+  };
+  const handleSubmit = () => {
+    if (!form.name) { toast.error('يرجى إدخال اسم التصنيف'); return; }
+    if (editingCat) updateMutation.mutate({ id: editingCat.id, data: form });
+    else createMutation.mutate(form);
+  };
+
+  const getProductCount = (catId: string) => (products || []).filter((p: any) => p.categoryId === catId).length;
+
+  const emojiOptions = Object.entries(CATEGORY_EMOJIS).slice(0, 24).map(([k, v]) => ({ key: k, emoji: v }));
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">التصنيفات</h1>
+        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700"><Plus className="w-4 h-4 ml-1" /> إضافة تصنيف</Button>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-lg" />)}
+        </div>
+      ) : categories.length === 0 ? (
+        <Card className="border-0 shadow-sm"><CardContent className="py-12 text-center text-muted-foreground">لا توجد تصنيفات</CardContent></Card>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {categories.map((cat: any) => (
+            <Card key={cat.id} className="border-0 shadow-sm hover:shadow-md transition-shadow group">
+              <CardContent className="p-4 flex flex-col items-center text-center gap-2">
+                <span className="text-3xl">{getCategoryEmoji(cat.name, cat.icon)}</span>
+                <h3 className="font-bold">{cat.name}</h3>
+                <p className="text-xs text-muted-foreground">{getProductCount(cat.id)} منتج</p>
+                {cat.description && <p className="text-xs text-muted-foreground line-clamp-2">{cat.description}</p>}
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(cat)}><Edit className="w-3.5 h-3.5" /></Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => setDeleteId(cat.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Add/Edit Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent dir="rtl">
+          <DialogHeader><DialogTitle>{editingCat ? 'تعديل تصنيف' : 'إضافة تصنيف جديد'}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>الاسم *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>الوصف</Label><Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></div>
+            <div>
+              <Label>الأيقونة</Label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {emojiOptions.map(opt => (
+                  <button
+                    key={opt.key} type="button"
+                    onClick={() => setForm({ ...form, icon: opt.key })}
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg transition-all ${form.icon === opt.key ? 'bg-amber-100 ring-2 ring-amber-500 scale-110' : 'bg-gray-50 hover:bg-gray-100'}`}
+                  >
+                    {opt.emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending} className="bg-amber-600 hover:bg-amber-700">
+              {createMutation.isPending || updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'حفظ'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>تأكيد الحذف</AlertDialogTitle>
+            <AlertDialogDescription>هل أنت متأكد من حذف هذا التصنيف؟</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>إلغاء</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate(deleteId)} className="bg-red-600 hover:bg-red-700">حذف</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// BRANCHES MANAGEMENT VIEW
+// ═══════════════════════════════════════════════════════
+function BranchesView() {
+  const user = useAppStore(s => s.user);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [form, setForm] = useState({ name: '', address: '', phone: '' });
+  const qClient = useQueryClient();
+
+  const { data: branches = [], isLoading } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => api.getBranches(),
+  });
+  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: () => api.getUsers(), enabled: isOwner(user?.role) });
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => api.createBranch(data),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['branches'] }); toast.success('تم إضافة الفرع'); setDialogOpen(false); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateBranch(id, data),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['branches'] }); toast.success('تم تحديث الفرع'); setDialogOpen(false); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const resetForm = () => setForm({ name: '', address: '', phone: '' });
+  const openCreate = () => { resetForm(); setEditing(null); setDialogOpen(true); };
+  const openEdit = (b: any) => {
+    setEditing(b);
+    setForm({ name: b.name || '', address: b.address || '', phone: b.phone || '' });
+    setDialogOpen(true);
+  };
+  const handleSubmit = () => {
+    if (!form.name) { toast.error('يرجى إدخال اسم الفرع'); return; }
+    if (editing) updateMutation.mutate({ id: editing.id, data: form });
+    else createMutation.mutate(form);
+  };
+
+  const getUserCount = (branchId: string) => (users || []).filter((u: any) => u.branchId === branchId).length;
+
+  if (!isOwner(user?.role)) {
+    return (
+      <AnimatedPage className="flex items-center justify-center h-96">
+        <Card className="border-0 shadow-sm"><CardContent className="py-12 text-center"><Shield className="w-10 h-10 mx-auto mb-2 text-muted-foreground" /><p className="text-muted-foreground">هذه الصفحة متاحة فقط للمالك</p></CardContent></Card>
+      </AnimatedPage>
+    );
+  }
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">الفروع</h1>
+        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700"><Plus className="w-4 h-4 ml-1" /> إضافة فرع</Button>
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-lg" />)}
+        </div>
+      ) : branches.length === 0 ? (
+        <Card className="border-0 shadow-sm"><CardContent className="py-12 text-center text-muted-foreground">لا توجد فروع</CardContent></Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {branches.map((branch: any) => (
+            <Card key={branch.id} className="border-0 shadow-sm hover:shadow-md transition-shadow group">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-amber-100 p-2.5 rounded-xl"><Building2 className="w-5 h-5 text-amber-600" /></div>
+                    <div>
+                      <h3 className="font-bold">{branch.name}</h3>
+                      <Badge variant="outline" className="text-[10px] mt-1"><Users className="w-3 h-3 ml-1" />{getUserCount(branch.id)} مستخدم</Badge>
+                    </div>
+                  </div>
+                  <Button size="icon" variant="ghost" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openEdit(branch)}>
+                    <Edit className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  {branch.address && <div className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5" />{branch.address}</div>}
+                  {branch.phone && <div className="flex items-center gap-2"><Phone className="w-3.5 h-3.5" /><span dir="ltr">{branch.phone}</span></div>}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent dir="rtl">
+          <DialogHeader><DialogTitle>{editing ? 'تعديل فرع' : 'إضافة فرع جديد'}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>اسم الفرع *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>العنوان</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
+            <div><Label>الهاتف</Label><Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} dir="ltr" /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending} className="bg-amber-600 hover:bg-amber-700">
+              {createMutation.isPending || updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'حفظ'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// USERS MANAGEMENT VIEW
+// ═══════════════════════════════════════════════════════
+function UsersView() {
+  const currentUser = useAppStore(s => s.user);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'cashier', branchId: '' });
+  const qClient = useQueryClient();
+
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => api.getUsers(),
+  });
+  const { data: branches = [] } = useQuery({ queryKey: ['branches'], queryFn: () => api.getBranches() });
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => api.createUser(data),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['users'] }); toast.success('تم إضافة المستخدم'); setDialogOpen(false); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateUser(id, data),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['users'] }); toast.success('تم تحديث المستخدم'); setDialogOpen(false); resetForm(); },
+    onError: (e: any) => toast.error(e.message),
+  });
+  const toggleMutation = useMutation({
+    mutationFn: (id: string) => api.toggleUserStatus(id),
+    onSuccess: () => { qClient.invalidateQueries({ queryKey: ['users'] }); toast.success('تم تغيير الحالة'); },
+    onError: (e: any) => toast.error(e.message),
+  });
+
+  const resetForm = () => setForm({ name: '', email: '', password: '', role: 'cashier', branchId: '' });
+  const openCreate = () => { resetForm(); setEditingUser(null); setDialogOpen(true); };
+  const openEdit = (u: any) => {
+    setEditingUser(u);
+    setForm({ name: u.name || '', email: u.email || '', password: '', role: u.role || 'cashier', branchId: u.branchId || '' });
+    setDialogOpen(true);
+  };
+  const handleSubmit = () => {
+    if (!form.name || !form.email) { toast.error('يرجى تعبئة الحقول المطلوبة'); return; }
+    const data: any = { name: form.name, email: form.email, role: form.role, branchId: form.branchId };
+    if (form.password) data.password = form.password;
+    if (editingUser) updateMutation.mutate({ id: editingUser.id, data });
+    else { if (!form.password) { toast.error('يرجى إدخال كلمة المرور'); return; } createMutation.mutate(data); }
+  };
+
+  const getBranchName = (branchId: string) => (branches || []).find((b: any) => b.id === branchId)?.name || '-';
+
+  if (!isManager(currentUser?.role)) {
+    return (
+      <AnimatedPage className="flex items-center justify-center h-96">
+        <Card className="border-0 shadow-sm"><CardContent className="py-12 text-center"><Shield className="w-10 h-10 mx-auto mb-2 text-muted-foreground" /><p className="text-muted-foreground">هذه الصفحة متاحة فقط للمالك والمدير</p></CardContent></Card>
+      </AnimatedPage>
+    );
+  }
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">المستخدمين</h1>
+        <Button onClick={openCreate} className="bg-amber-600 hover:bg-amber-700"><Plus className="w-4 h-4 ml-1" /> إضافة مستخدم</Button>
+      </div>
+
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>الاسم</TableHead>
+                  <TableHead>البريد</TableHead>
+                  <TableHead>الدور</TableHead>
+                  <TableHead>الفرع</TableHead>
+                  <TableHead>الحالة</TableHead>
+                  <TableHead>إجراءات</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((u: any) => (
+                  <TableRow key={u.id}>
+                    <TableCell className="flex items-center gap-2"><UserCircle className="w-4 h-4 text-muted-foreground" />{u.name}</TableCell>
+                    <TableCell className="font-mono text-xs" dir="ltr">{u.email}</TableCell>
+                    <TableCell><RoleBadge role={u.role} /></TableCell>
+                    <TableCell>{getBranchName(u.branchId)}</TableCell>
+                    <TableCell><StatusBadge status={u.active !== false ? 'active' : 'inactive'} /></TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(u)}><Edit className="w-3.5 h-3.5" /></Button>
+                        {u.id !== currentUser?.id && (
+                          <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => toggleMutation.mutate(u.id)}>
+                            {u.active !== false ? <XCircle className="w-3.5 h-3.5 text-red-500" /> : <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent dir="rtl">
+          <DialogHeader><DialogTitle>{editingUser ? 'تعديل مستخدم' : 'إضافة مستخدم جديد'}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <div><Label>الاسم *</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>البريد *</Label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} dir="ltr" /></div>
+            <div><Label>{editingUser ? 'كلمة المرور (اتركها فارغة لعدم التغيير)' : 'كلمة المرور *'}</Label><Input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} dir="ltr" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>الدور</Label>
+                <Select value={form.role} onValueChange={v => setForm({ ...form, role: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="owner">مالك</SelectItem>
+                    <SelectItem value="manager">مدير</SelectItem>
+                    <SelectItem value="cashier">كاشير</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>الفرع</Label>
+                <Select value={form.branchId} onValueChange={v => setForm({ ...form, branchId: v })}>
+                  <SelectTrigger><SelectValue placeholder="اختر فرع" /></SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
+            <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending} className="bg-amber-600 hover:bg-amber-700">
+              {createMutation.isPending || updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'حفظ'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// REPORTS VIEW
+// ═══════════════════════════════════════════════════════
+function ReportsView() {
+  const user = useAppStore(s => s.user);
+  const [period, setPeriod] = useState('today');
+  const [branchFilter, setBranchFilter] = useState('all');
+
+  const { data: summary, isLoading } = useQuery({
+    queryKey: ['report-summary', period, branchFilter],
+    queryFn: () => api.getSummary({ period, ...(branchFilter !== 'all' ? { branchId: branchFilter } : {}) }),
+  });
+  const { data: salesData } = useQuery({
+    queryKey: ['report-sales', period],
+    queryFn: () => api.getSales({ period: period === 'today' ? 'daily' : period === 'week' ? 'weekly' : 'monthly', days: period === 'today' ? '1' : period === 'week' ? '7' : '30' }),
+  });
+  const { data: productReport } = useQuery({
+    queryKey: ['report-products', period],
+    queryFn: () => api.getProductReport({ period }),
+  });
+  const { data: cashierReport } = useQuery({
+    queryKey: ['report-cashiers', period],
+    queryFn: () => api.getCashierReport({ period }),
+    enabled: isManager(user?.role),
+  });
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => api.getBranches(),
+    enabled: isOwner(user?.role),
+  });
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-xl font-bold">التقارير</h1>
+        <div className="flex gap-2 items-center">
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">اليوم</SelectItem>
+              <SelectItem value="week">هذا الأسبوع</SelectItem>
+              <SelectItem value="month">هذا الشهر</SelectItem>
+            </SelectContent>
+          </Select>
+          {isOwner(user?.role) && (
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger className="w-32 h-9"><SelectValue placeholder="كل الفروع" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الفروع</SelectItem>
+                {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { title: 'إجمالي المبيعات', value: `${fmt(summary?.totalSales || 0)} ر.س`, color: 'text-emerald-600' },
+          { title: 'عدد الفواتير', value: String(summary?.invoiceCount || 0), color: 'text-blue-600' },
+          { title: 'متوسط الطلب', value: `${fmt(summary?.avgOrder || 0)} ر.س`, color: 'text-purple-600' },
+          { title: 'صافي الربح', value: `${fmt(summary?.netProfit || 0)} ر.س`, color: 'text-amber-600' },
+        ].map(card => (
+          <Card key={card.title} className="border-0 shadow-sm">
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground">{card.title}</p>
+              <p className={`text-xl font-bold mt-1 ${card.color}`}>{isLoading ? <Skeleton className="h-7 w-20" /> : card.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Sales Chart */}
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-2"><CardTitle className="text-base">مخطط المبيعات</CardTitle></CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-[250px]" />
+          ) : (
+            <div className="h-[250px] flex items-end gap-1.5 pt-4">
+              {(salesData?.data || []).slice(0, 14).map((d: any, i: number) => {
+                const max = Math.max(...(salesData?.data || []).map((s: any) => s.total || 0), 1);
+                const h = Math.max(4, ((d.total || 0) / max) * 100);
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                    <motion.div
+                      initial={{ height: 0 }}
+                      animate={{ height: `${h}%` }}
+                      transition={{ duration: 0.4, delay: i * 0.03 }}
+                      className="w-full bg-gradient-to-t from-amber-500 to-amber-300 rounded-t-md min-h-[4px]"
+                    />
+                    <span className="text-[9px] text-muted-foreground truncate w-full text-center">{d.label || d.date?.slice(5) || ''}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Top Products */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2"><CardTitle className="text-base">أفضل المنتجات</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>المنتج</TableHead>
+                  <TableHead>الكمية</TableHead>
+                  <TableHead>المبيعات</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(productReport?.data || productReport || []).slice(0, 10).map((p: any, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-sm">{p.name || '-'}</TableCell>
+                    <TableCell className="font-mono text-sm">{p.quantity || 0}</TableCell>
+                    <TableCell className="font-bold text-amber-700">{fmt(p.total || 0)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Cashier Performance */}
+        {isManager(user?.role) && (
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-2"><CardTitle className="text-base">أداء الكاشير</CardTitle></CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>الكاشير</TableHead>
+                    <TableHead>الفواتير</TableHead>
+                    <TableHead>المبيعات</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(cashierReport?.data || cashierReport || []).slice(0, 10).map((c: any, i: number) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-sm">{c.name || '-'}</TableCell>
+                      <TableCell className="font-mono text-sm">{c.invoiceCount || 0}</TableCell>
+                      <TableCell className="font-bold text-amber-700">{fmt(c.total || 0)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// AUDIT LOGS VIEW
+// ═══════════════════════════════════════════════════════
+function AuditLogsView() {
+  const currentUser = useAppStore(s => s.user);
+  const [page, setPage] = useState(1);
+  const [actionFilter, setActionFilter] = useState('all');
+
+  const { data: logsData, isLoading } = useQuery({
+    queryKey: ['audit-logs', page, actionFilter],
+    queryFn: () => api.getAuditLogs({
+      page: String(page), limit: '20',
+      ...(actionFilter !== 'all' ? { action: actionFilter } : {}),
+    }),
+  });
+
+  const logs = logsData?.data || logsData || [];
+
+  if (!isManager(currentUser?.role)) {
+    return (
+      <AnimatedPage className="flex items-center justify-center h-96">
+        <Card className="border-0 shadow-sm"><CardContent className="py-12 text-center"><Shield className="w-10 h-10 mx-auto mb-2 text-muted-foreground" /><p className="text-muted-foreground">هذه الصفحة متاحة فقط للمالك والمدير</p></CardContent></Card>
+      </AnimatedPage>
+    );
+  }
+
+  const actionLabels: Record<string, string> = {
+    create: 'إنشاء', update: 'تحديث', delete: 'حذف', login: 'تسجيل دخول', logout: 'تسجيل خروج', pay: 'دفع',
+  };
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-xl font-bold">سجل العمليات</h1>
+        <Select value={actionFilter} onValueChange={setActionFilter}>
+          <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">كل العمليات</SelectItem>
+            <SelectItem value="create">إنشاء</SelectItem>
+            <SelectItem value="update">تحديث</SelectItem>
+            <SelectItem value="delete">حذف</SelectItem>
+            <SelectItem value="pay">دفع</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card className="border-0 shadow-sm">
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-3"><Skeleton className="h-10 w-full" /><Skeleton className="h-10 w-full" /></div>
+          ) : logs.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-12">لا توجد سجلات</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>التاريخ</TableHead>
+                  <TableHead>المستخدم</TableHead>
+                  <TableHead>الإجراء</TableHead>
+                  <TableHead>الكيان</TableHead>
+                  <TableHead>التفاصيل</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {logs.map((log: any, i: number) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-xs">{new Date(log.createdAt).toLocaleString('ar-SA')}</TableCell>
+                    <TableCell className="text-sm">{log.userName || '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={
+                        log.action === 'delete' ? 'bg-red-50 text-red-600 border-red-200' :
+                        log.action === 'create' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' :
+                        log.action === 'pay' ? 'bg-amber-50 text-amber-600 border-amber-200' :
+                        'bg-blue-50 text-blue-600 border-blue-200'
+                      }>
+                        {actionLabels[log.action] || log.action}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">{log.entity || '-'}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">{log.details || '-'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Pagination */}
+      <div className="flex justify-center gap-2">
+        <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>السابق</Button>
+        <span className="flex items-center text-sm text-muted-foreground">صفحة {page}</span>
+        <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={logs.length < 20}>التالي</Button>
+      </div>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// MAIN APPLICATION
+// ═══════════════════════════════════════════════════════
+function AppContent() {
+  const user = useAppStore(s => s.user);
+  const currentView = useAppStore(s => s.currentView);
+  const setView = useAppStore(s => s.setView);
+  const logout = useAppStore(s => s.logout);
+  const company = useAppStore(s => s.company);
+  const toggleFullscreen = useAppStore(s => s.toggleFullscreen);
+
+  const navItems = [
+    { view: 'dashboard' as View, label: 'لوحة التحكم', icon: LayoutDashboard },
+    { view: 'pos' as View, label: 'نقطة البيع', icon: ShoppingCart },
+    { view: 'invoices' as View, label: 'الفواتير', icon: FileText },
+    { view: 'products' as View, label: 'المنتجات', icon: Package },
+    { view: 'categories' as View, label: 'التصنيفات', icon: FolderOpen },
+    ...(isOwner(user?.role) ? [{ view: 'branches' as View, label: 'الفروع', icon: Building2 }] : []),
+    ...(isManager(user?.role) ? [{ view: 'users' as View, label: 'المستخدمين', icon: Users }] : []),
+    { view: 'reports' as View, label: 'التقارير', icon: BarChart3 },
+    ...(isManager(user?.role) ? [{ view: 'audit-logs' as View, label: 'سجل العمليات', icon: Search }] : []),
+  ];
+
+  const renderView = () => {
+    switch (currentView) {
+      case 'pos': return <POSView />;
+      case 'dashboard': return <DashboardView />;
+      case 'invoices': return <InvoicesView />;
+      case 'products': return <ProductsView />;
+      case 'categories': return <CategoriesView />;
+      case 'branches': return <BranchesView />;
+      case 'users': return <UsersView />;
+      case 'reports': return <ReportsView />;
+      case 'audit-logs': return <AuditLogsView />;
+      default: return <POSView />;
+    }
+  };
+
+  return (
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full">
+        {/* Sidebar - right side for RTL */}
+        <Sidebar side="right" variant="inset" collapsible="icon">
+          <SidebarHeader className="border-b border-sidebar-border">
+            <div className="flex items-center gap-2 px-2 py-1">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shrink-0">
+                <Coffee className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+                <h2 className="font-bold text-sm truncate">{company?.name || 'CafePOS'}</h2>
+                <p className="text-[10px] text-muted-foreground truncate">نظام نقاط البيع</p>
+              </div>
+            </div>
+          </SidebarHeader>
+
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {navItems.map(item => (
+                    <SidebarMenuItem key={item.view}>
+                      <SidebarMenuButton
+                        isActive={currentView === item.view}
+                        onClick={() => setView(item.view)}
+                        tooltip={{ children: item.label, side: 'left' }}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+
+          <SidebarFooter className="border-t border-sidebar-border">
+            <div className="flex items-center gap-2 px-2 py-1">
+              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <UserCircle className="w-5 h-5 text-amber-600" />
+              </div>
+              <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+                <p className="text-sm font-medium truncate">{user?.name}</p>
+                <RoleBadge role={user?.role || ''} />
+              </div>
+              <Button
+                variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-700 group-data-[collapsible=icon]:hidden"
+                onClick={logout}
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
+          </SidebarFooter>
+          <SidebarRail />
+        </Sidebar>
+
+        {/* Main content */}
+        <SidebarInset>
+          {/* Header */}
+          <header className="sticky top-0 z-10 flex items-center h-16 gap-4 border-b bg-white/80 backdrop-blur-sm px-4">
+            <SidebarTrigger />
+            <div className="flex-1" />
+            <TimeDisplay />
+            <Button variant="ghost" size="icon" onClick={toggleFullscreen} title="ملء الشاشة">
+              <Maximize2 className="w-4 h-4" />
+            </Button>
+          </header>
+
+          {/* Content */}
+          <div className="flex-1 overflow-auto">
+            <div className={currentView === 'pos' ? '' : 'p-6'}>
+              <AnimatePresence mode="wait">
+                {renderView()}
+              </AnimatePresence>
+            </div>
+          </div>
+        </SidebarInset>
+      </div>
+
+      {/* Payment Dialog (global) */}
+      <PaymentDialog />
+    </SidebarProvider>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// ROOT PAGE COMPONENT
+// ═══════════════════════════════════════════════════════
+export default function POSApp() {
+  const [isReady, setIsReady] = useState(false);
+  const user = useAppStore(s => s.user);
+  const setAuth = useAppStore(s => s.setAuth);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const token = localStorage.getItem('pos_token');
+      if (token) {
+        try {
+          const res = await api.me();
+          setAuth(res.user, token, res.company, res.branch);
+        } catch {
+          localStorage.removeItem('pos_token');
+        }
+      }
+      setIsReady(true);
+    };
+    checkAuth();
+  }, [setAuth]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!user) return;
+      // Ctrl+K: Focus search (POS)
+      if (e.ctrlKey && e.key === 'k') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[placeholder*="بحث"]') as HTMLInputElement;
+        searchInput?.focus();
+      }
+      // F2: New invoice
+      if (e.key === 'F2') {
+        e.preventDefault();
+        useAppStore.getState().clearCart();
+        toast.info('فاتورة جديدة');
+      }
+      // F8: Pay
+      if (e.key === 'F8') {
+        e.preventDefault();
+        if (useAppStore.getState().cart.length > 0) {
+          useAppStore.getState().setPaymentDialogOpen(true);
+        }
+      }
+      // F4: Clear cart
+      if (e.key === 'F4') {
+        e.preventDefault();
+        useAppStore.getState().clearCart();
+      }
+      // Escape: Close dialogs
+      if (e.key === 'Escape') {
+        useAppStore.getState().setPaymentDialogOpen(false);
+        useAppStore.getState().setSelectedInvoiceId(null);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [user]);
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-amber-100">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-amber-300 border-t-amber-600 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">جاري التحميل...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return <LoginScreen />;
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
+    </QueryClientProvider>
+  );
+}
