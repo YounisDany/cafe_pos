@@ -798,8 +798,8 @@ function DashboardView() {
           ) : (
             <div className="h-[300px] flex items-end gap-2 pt-4">
               {(salesData?.data || []).slice(0, 7).map((d: any, i: number) => {
-                const max = Math.max(...(salesData?.data || []).map((s: any) => s.total || 0), 1);
-                const h = Math.max(4, ((d.total || 0) / max) * 100);
+                const max = Math.max(...(salesData?.data || []).map((s: any) => s.totalSales || 0), 1);
+                const h = Math.max(4, ((d.totalSales || 0) / max) * 100);
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1">
                     <motion.div
@@ -808,7 +808,7 @@ function DashboardView() {
                       transition={{ duration: 0.5, delay: i * 0.05 }}
                       className="w-full bg-gradient-to-t from-amber-500 to-amber-400 rounded-t-md min-h-[4px]"
                     />
-                    <span className="text-[10px] text-muted-foreground">{d.label || d.date?.slice(5) || ''}</span>
+                    <span className="text-[10px] text-muted-foreground">{d.period || ''}</span>
                   </div>
                 );
               })}
@@ -1639,8 +1639,8 @@ function ReportsView() {
           ) : (
             <div className="h-[250px] flex items-end gap-1.5 pt-4">
               {(salesData?.data || []).slice(0, 14).map((d: any, i: number) => {
-                const max = Math.max(...(salesData?.data || []).map((s: any) => s.total || 0), 1);
-                const h = Math.max(4, ((d.total || 0) / max) * 100);
+                const max = Math.max(...(salesData?.data || []).map((s: any) => s.totalSales || 0), 1);
+                const h = Math.max(4, ((d.totalSales || 0) / max) * 100);
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
                     <motion.div
@@ -1649,7 +1649,7 @@ function ReportsView() {
                       transition={{ duration: 0.4, delay: i * 0.03 }}
                       className="w-full bg-gradient-to-t from-amber-500 to-amber-300 rounded-t-md min-h-[4px]"
                     />
-                    <span className="text-[9px] text-muted-foreground truncate w-full text-center">{d.label || d.date?.slice(5) || ''}</span>
+                    <span className="text-[9px] text-muted-foreground truncate w-full text-center">{d.period || ''}</span>
                   </div>
                 );
               })}
@@ -1672,11 +1672,11 @@ function ReportsView() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(productReport?.data || productReport || []).slice(0, 10).map((p: any, i: number) => (
+                {(productReport?.products || []).slice(0, 10).map((p: any, i: number) => (
                   <TableRow key={i}>
                     <TableCell className="text-sm">{p.name || '-'}</TableCell>
-                    <TableCell className="font-mono text-sm">{p.quantity || 0}</TableCell>
-                    <TableCell className="font-bold text-amber-700">{fmt(p.total || 0)}</TableCell>
+                    <TableCell className="font-mono text-sm">{p.quantitySold || 0}</TableCell>
+                    <TableCell className="font-bold text-amber-700">{fmt(p.revenue || 0)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1698,11 +1698,11 @@ function ReportsView() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(cashierReport?.data || cashierReport || []).slice(0, 10).map((c: any, i: number) => (
+                  {(cashierReport?.cashiers || []).slice(0, 10).map((c: any, i: number) => (
                     <TableRow key={i}>
                       <TableCell className="text-sm">{c.name || '-'}</TableCell>
-                      <TableCell className="font-mono text-sm">{c.invoiceCount || 0}</TableCell>
-                      <TableCell className="font-bold text-amber-700">{fmt(c.total || 0)}</TableCell>
+                      <TableCell className="font-mono text-sm">{c.transactionCount || 0}</TableCell>
+                      <TableCell className="font-bold text-amber-700">{fmt(c.totalSales || 0)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
