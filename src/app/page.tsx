@@ -246,10 +246,10 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           </div>
           <div className="border-t border-dashed border-gray-400 my-2" />
           <div className="flex justify-between text-[10px]">
-            <span>فاتورة #{invoice.id?.slice(-6)}</span>
+            <span>فاتورة #{invoice.invoiceNo || invoice.id?.slice(-6)}</span>
             <span>{new Date(invoice.createdAt).toLocaleString('ar-SA')}</span>
           </div>
-          <div className="text-[10px] mb-1">الكاشير: {invoice.cashierName || '-'}</div>
+          <div className="text-[10px] mb-1">الكاشير: {invoice.user?.name || invoice.cashierName || '-'}</div>
           <div className="border-t border-dashed border-gray-400 my-2" />
           {(invoice.items || []).map((item: any, i: number) => (
             <div key={i} className="mb-1">
@@ -269,7 +269,7 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
             {invoice.discount > 0 && (
               <div className="flex justify-between text-red-600"><span>الخصم</span><span>-{fmt(invoice.discount)}</span></div>
             )}
-            <div className="flex justify-between"><span>الضريبة {(invoice.taxRate || 15)}%</span><span>{fmt(invoice.tax)}</span></div>
+            <div className="flex justify-between"><span>الضريبة {(invoice.taxRate || 15)}%</span><span>{fmt(invoice.tax || invoice.taxAmount || 0)}</span></div>
             <div className="border-t border-dashed border-gray-400 my-1" />
             <div className="flex justify-between text-sm font-bold text-base">
               <span>الإجمالي</span><span>{fmt(invoice.total)} ر.س</span>
@@ -306,12 +306,13 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
 // PAYMENT DIALOG
 // ═══════════════════════════════════════════════════════
 function PaymentDialog() {
-  const { paymentDialogOpen, setPaymentDialogOpen, cart, getSubtotal, getTax, getTotal, discount, clearCart, currentInvoiceId } = useAppStore();
+  const { paymentDialogOpen, setPaymentDialogOpen, cart, getSubtotal, getTax, getTotal, discount, clearCart, currentInvoiceId, user, branch } = useAppStore();
   const [method, setMethod] = useState<'cash' | 'card'>('cash');
   const [amountReceived, setAmountReceived] = useState('');
   const [paying, setPaying] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [paidInvoice, setPaidInvoice] = useState<any>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState('');
   const qClient = useQueryClient();
 
   const subtotal = getSubtotal();
@@ -319,26 +320,62 @@ function PaymentDialog() {
   const total = getTotal();
   const change = amountReceived ? Math.max(0, parseFloat(amountReceived) - total) : 0;
 
+  // Fetch branches for owners who don't have a default branch
+  const { data: branches = [] } = useQuery({
+    queryKey: ['branches-payment'],
+    queryFn: () => api.getBranches(),
+    enabled: paymentDialogOpen && user?.role === 'owner' && !user?.branchId,
+  });
+
+  // Auto-select first branch for owners
+  useEffect(() => {
+    if (user?.role === 'owner' && !user?.branchId && branches.length > 0 && !selectedBranchId) {
+      setSelectedBranchId(branches[0].id);
+    }
+  }, [branches, user, selectedBranchId]);
+
+  const effectiveBranchId = user?.branchId || selectedBranchId || branch?.id;
+
   const handlePay = async () => {
     if (method === 'cash' && parseFloat(amountReceived) < total) {
       toast.error('المبلغ المدفوع أقل من الإجمالي');
       return;
     }
+    if (!effectiveBranchId) {
+      toast.error('يرجى اختيار الفرع أولاً');
+      return;
+    }
+    if (!currentInvoiceId && cart.length === 0) {
+      toast.error('السلة فارغة');
+      return;
+    }
     setPaying(true);
     try {
-      const invoiceData = {
-        items: cart.map(c => ({ productId: c.productId, name: c.name, price: c.price, quantity: c.quantity })),
-        subtotal, discount, tax, total,
-        paymentMethod: method,
-        amountReceived: method === 'cash' ? parseFloat(amountReceived) : total,
-        change: method === 'cash' ? change : 0,
-      };
       let invoice: any;
+
       if (currentInvoiceId) {
-        invoice = await api.payInvoice(currentInvoiceId, invoiceData);
+        // Existing invoice: pay it
+        invoice = await api.payInvoice(currentInvoiceId, {
+          method,
+          amount: total,
+          cashReceived: method === 'cash' ? parseFloat(amountReceived) : undefined,
+        });
       } else {
-        invoice = await api.createInvoice(invoiceData);
+        // New flow: create invoice first, then pay it
+        const created = await api.createInvoice({
+          branchId: effectiveBranchId,
+          items: cart.map(c => ({ productId: c.productId, price: c.price, quantity: c.quantity })),
+          discount,
+        });
+
+        // Now pay the invoice
+        invoice = await api.payInvoice(created.id, {
+          method,
+          amount: total,
+          cashReceived: method === 'cash' ? parseFloat(amountReceived) : undefined,
+        });
       }
+
       setPaidInvoice(invoice);
       toast.success('تم الدفع بنجاح!');
       clearCart();
@@ -376,6 +413,19 @@ function PaymentDialog() {
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Branch selector for owners without a default branch */}
+          {!user?.branchId && user?.role === 'owner' && branches.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm">الفرع</Label>
+              <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="اختر الفرع" /></SelectTrigger>
+                <SelectContent>
+                  {branches.map((b: any) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <Tabs value={method} onValueChange={(v) => setMethod(v as 'cash' | 'card')}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="cash" className="gap-2">
@@ -725,7 +775,7 @@ function DashboardView() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">{card.title}</p>
-                  <p className={`text-xl font-bold mt-1 ${card.color}`}>{isLoading ? <Skeleton className="h-7 w-24" /> : card.value}</p>
+                  <div className={`text-xl font-bold mt-1 ${card.color}`}>{isLoading ? <Skeleton className="h-7 w-24" /> : card.value}</div>
                 </div>
                 <div className={`${card.iconBg} p-3 rounded-xl`}>
                   <card.icon className={`w-5 h-5 ${card.color}`} />
@@ -1571,7 +1621,7 @@ function ReportsView() {
           <Card key={card.title} className="border-0 shadow-sm">
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground">{card.title}</p>
-              <p className={`text-xl font-bold mt-1 ${card.color}`}>{isLoading ? <Skeleton className="h-7 w-20" /> : card.value}</p>
+              <div className={`text-xl font-bold mt-1 ${card.color}`}>{isLoading ? <Skeleton className="h-7 w-20" /> : card.value}</div>
             </CardContent>
           </Card>
         ))}
