@@ -67,6 +67,17 @@ export async function POST(request: NextRequest) {
         address: user.company.address,
         taxRate: user.company.taxRate,
         currency: user.company.currency,
+        primaryColor: user.company.primaryColor,
+        secondaryColor: user.company.secondaryColor,
+        accentColor: user.company.accentColor,
+        currencySymbol: user.company.currencySymbol,
+        taxNumber: user.company.taxNumber,
+        receiptHeader: user.company.receiptHeader,
+        receiptFooter: user.company.receiptFooter,
+        receiptShowLogo: user.company.receiptShowLogo,
+        receiptWidth: user.company.receiptWidth,
+        showTaxOnReceipt: user.company.showTaxOnReceipt,
+        showDiscountOnReceipt: user.company.showDiscountOnReceipt,
       },
       branch: user.branch
         ? {

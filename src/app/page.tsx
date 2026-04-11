@@ -588,7 +588,7 @@ function POSView() {
           {productsLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {Array.from({ length: 10 }).map((_, i) => (
-                <Skeleton key={i} className="h-[120px] rounded-lg" />
+                <Skeleton key={i} className="h-[140px] rounded-xl" />
               ))}
             </div>
           ) : filteredProducts.length === 0 ? (
@@ -604,14 +604,18 @@ function POSView() {
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
                   onClick={() => handleProductClick(product)}
-                  className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-all p-3 flex flex-col items-center justify-center text-center gap-1.5 h-[120px] cursor-pointer group"
+                  className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all p-4 flex flex-col items-center text-center gap-2 min-h-[140px] cursor-pointer group"
                 >
-                  <span className="text-2xl group-hover:scale-110 transition-transform">
+                  <span className="text-3xl group-hover:scale-110 transition-transform">
                     {getCategoryEmoji(product.categoryName, product.categoryIcon)}
                   </span>
-                  <p className="text-xs font-medium text-gray-800 line-clamp-2 leading-tight">{product.name}</p>
-                  <p className="text-sm font-bold text-amber-700">{fmt(product.price)}</p>
-                  <p className="text-[10px] text-muted-foreground">ر.س</p>
+                  <div className="flex-1 flex items-center">
+                    <p className="text-sm font-semibold text-gray-800 leading-snug">{product.name}</p>
+                  </div>
+                  <div className="flex items-baseline gap-0.5">
+                    <p className="text-base font-bold text-amber-700">{fmt(product.price)}</p>
+                    <p className="text-[11px] text-muted-foreground">ر.س</p>
+                  </div>
                 </motion.button>
               ))}
             </div>
