@@ -7,24 +7,10 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient(): PrismaClient {
   const dbUrl = process.env.DATABASE_URL;
 
-  // Production must have DATABASE_URL set
-  if (!dbUrl) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(
-        'DATABASE_URL is not set. Please add it in Vercel → Settings → Environment Variables.\n' +
-        'Value: libsql://cafe-younisdany.aws-ap-northeast-1.turso.io'
-      );
-    }
-    // Local development fallback
-    return new PrismaClient();
-  }
-
-  // For Turso/libsql URLs, use the driver adapter
-  if (dbUrl.startsWith('libsql://')) {
+  // Production: connect to Turso via libsql adapter
+  if (dbUrl?.startsWith('libsql://')) {
     if (!process.env.DATABASE_AUTH_TOKEN) {
-      throw new Error(
-        'DATABASE_AUTH_TOKEN is not set. Please add it in Vercel → Settings → Environment Variables.'
-      );
+      throw new Error('DATABASE_AUTH_TOKEN is not set in environment variables.');
     }
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaLibSQL } = require('@prisma/adapter-libsql');
@@ -37,7 +23,19 @@ function createPrismaClient(): PrismaClient {
     });
 
     const adapter = new PrismaLibSQL(libsql);
-    return new PrismaClient({ adapter } as any);
+    // datasourceUrl overrides schema URL validation (sqlite provider rejects libsql://)
+    return new PrismaClient({
+      adapter,
+      datasourceUrl: 'file:./dummy.db',
+    } as any);
+  }
+
+  // Local development: use SQLite file
+  if (!dbUrl && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'DATABASE_URL is not set. Add it in Vercel → Settings → Environment Variables.\n' +
+      'Example: libsql://your-db.turso.io'
+    );
   }
 
   return new PrismaClient();
