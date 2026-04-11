@@ -147,6 +147,209 @@ function TimeDisplay() {
 }
 
 // ═══════════════════════════════════════════════════════
+// SETUP SCREEN (First-time setup when no data exists)
+// ═══════════════════════════════════════════════════════
+function SetupScreen() {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const setAuth = useAppStore(s => s.setAuth);
+
+  // Step 1: Company info
+  const [companyName, setCompanyName] = useState('');
+  const [branchName, setBranchName] = useState('');
+  const [branchPhone, setBranchPhone] = useState('');
+  const [branchAddress, setBranchAddress] = useState('');
+
+  // Step 2: Owner info
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPassword, setOwnerPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const handleNext = () => {
+    if (step === 1) {
+      if (!companyName.trim()) { toast.error('يرجى إدخال اسم النشاط'); return; }
+      setStep(2);
+    }
+  };
+
+  const handleBack = () => {
+    if (step === 2) setStep(1);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ownerName.trim()) { toast.error('يرجى إدخال اسم المالك'); return; }
+    if (!ownerEmail.trim()) { toast.error('يرجى إدخال البريد الإلكتروني'); return; }
+    if (!ownerPassword || ownerPassword.length < 6) { toast.error('كلمة المرور يجب أن تكون 6 أحرف على الأقل'); return; }
+    if (ownerPassword !== confirmPassword) { toast.error('كلمة المرور غير متطابقة'); return; }
+
+    setLoading(true);
+    try {
+      const res = await api.setup({
+        companyName: companyName.trim(),
+        ownerName: ownerName.trim(),
+        ownerEmail: ownerEmail.trim(),
+        ownerPassword,
+        branchName: branchName.trim() || undefined,
+        branchPhone: branchPhone.trim() || undefined,
+        branchAddress: branchAddress.trim() || undefined,
+      });
+      setAuth(res.user, res.token, res.company, res.branch);
+      toast.success(`مرحباً ${res.user.name}! تم إنشاء حسابك بنجاح`);
+    } catch (err: any) {
+      toast.error(err.message || 'فشل إنشاء الحساب');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        className="w-full max-w-lg"
+      >
+        <Card className="border-0 shadow-2xl shadow-amber-900/10 bg-white/90 backdrop-blur-sm">
+          <CardHeader className="text-center pb-2">
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center mb-4 shadow-lg shadow-amber-500/25">
+              <Sparkles className="w-8 h-8 text-white" />
+            </div>
+            <CardTitle className="text-2xl font-bold bg-gradient-to-l from-amber-700 to-amber-900 bg-clip-text text-transparent">
+              إعداد CafePOS
+            </CardTitle>
+            <CardDescription className="text-muted-foreground">
+              {step === 1 ? 'الخطوة 1 من 2: معلومات النشاط' : 'الخطوة 2 من 2: حساب المالك'}
+            </CardDescription>
+            {/* Progress bar */}
+            <div className="flex gap-2 mt-3 px-4">
+              <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 1 ? 'bg-amber-500' : 'bg-gray-200'}`} />
+              <div className={`h-1.5 flex-1 rounded-full transition-colors ${step >= 2 ? 'bg-amber-500' : 'bg-gray-200'}`} />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {step === 1 ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>اسم النشاط *</Label>
+                  <Input
+                    placeholder="مثال: مقهى الأرواح"
+                    value={companyName} onChange={e => setCompanyName(e.target.value)}
+                    className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>اسم الفرع</Label>
+                  <Input
+                    placeholder="الفرع الرئيسي"
+                    value={branchName} onChange={e => setBranchName(e.target.value)}
+                    className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>هاتف الفرع</Label>
+                    <Input
+                      placeholder="05xxxxxxxx" dir="ltr"
+                      value={branchPhone} onChange={e => setBranchPhone(e.target.value)}
+                      className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>عنوان الفرع</Label>
+                    <Input
+                      placeholder="المدينة - الحي"
+                      value={branchAddress} onChange={e => setBranchAddress(e.target.value)}
+                      className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+                <Button
+                  onClick={handleNext}
+                  className="w-full h-11 bg-gradient-to-l from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-semibold shadow-lg shadow-amber-500/25 transition-all"
+                >
+                  التالي <ChevronLeft className="w-4 h-4 mr-1" />
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>اسم المالك *</Label>
+                  <Input
+                    placeholder="الاسم الكامل"
+                    value={ownerName} onChange={e => setOwnerName(e.target.value)}
+                    className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>البريد الإلكتروني *</Label>
+                  <Input
+                    type="email" placeholder="email@example.com" dir="ltr"
+                    value={ownerEmail} onChange={e => setOwnerEmail(e.target.value)}
+                    className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>كلمة المرور *</Label>
+                    <Input
+                      type="password" placeholder="6 أحرف على الأقل" dir="ltr"
+                      value={ownerPassword} onChange={e => setOwnerPassword(e.target.value)}
+                      className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>تأكيد كلمة المرور *</Label>
+                    <Input
+                      type="password" placeholder="أعد كتابة كلمة المرور" dir="ltr"
+                      value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                      className="h-11 bg-amber-50/50 border-amber-200 focus:border-amber-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Summary card */}
+                <div className="bg-amber-50/70 rounded-lg p-3 space-y-1 text-sm border border-amber-100">
+                  <p className="font-semibold text-amber-800">ملخص:</p>
+                  <p className="text-muted-foreground">
+                    <span className="text-amber-700 font-medium">{companyName}</span>
+                    {branchName ? ` — ${branchName}` : ''}
+                  </p>
+                  <p className="text-muted-foreground">
+                    المالك: <span className="font-medium">{ownerName}</span> ({ownerEmail})
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    type="button" variant="outline" onClick={handleBack}
+                    className="h-11 flex-1"
+                  >
+                    <ChevronDown className="w-4 h-4 mr-1 rotate-90" /> رجوع
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="h-11 flex-[2] bg-gradient-to-l from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-semibold shadow-lg shadow-emerald-500/25 transition-all"
+                    disabled={loading}
+                  >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="flex items-center"><CheckCircle className="w-4 h-4 ml-1" /> إنشاء الحساب</span>}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+        <p className="text-center text-xs text-muted-foreground mt-6">
+          © {new Date().getFullYear()} CafePOS — جميع الحقوق محفوظة
+        </p>
+      </motion.div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
 // LOGIN SCREEN
 // ═══════════════════════════════════════════════════════
 function LoginScreen() {
@@ -2714,11 +2917,28 @@ function AppContent() {
 // ═══════════════════════════════════════════════════════
 export default function POSApp() {
   const [isReady, setIsReady] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [checkingSetup, setCheckingSetup] = useState(true);
   const user = useAppStore(s => s.user);
   const setAuth = useAppStore(s => s.setAuth);
 
   useEffect(() => {
-    const checkAuth = async () => {
+    const init = async () => {
+      // Check if system needs setup
+      try {
+        const setupRes = await api.checkSetup();
+        if (setupRes.needsSetup) {
+          setNeedsSetup(true);
+          setCheckingSetup(false);
+          setIsReady(true);
+          return;
+        }
+      } catch {
+        // If setup check fails, assume setup is done
+      }
+      setCheckingSetup(false);
+
+      // Try to restore existing session
       const token = localStorage.getItem('pos_token');
       if (token) {
         try {
@@ -2730,7 +2950,7 @@ export default function POSApp() {
       }
       setIsReady(true);
     };
-    checkAuth();
+    init();
   }, [setAuth]);
 
   // Keyboard shortcuts
@@ -2771,7 +2991,7 @@ export default function POSApp() {
     return () => window.removeEventListener('keydown', handler);
   }, [user]);
 
-  if (!isReady) {
+  if (!isReady || checkingSetup) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-amber-100">
         <div className="text-center">
@@ -2782,7 +3002,10 @@ export default function POSApp() {
     );
   }
 
-  if (!user) return <LoginScreen />;
+  if (!user) {
+    if (needsSetup) return <SetupScreen />;
+    return <LoginScreen />;
+  }
 
   return (
     <QueryClientProvider client={queryClient}>

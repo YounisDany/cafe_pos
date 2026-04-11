@@ -25,6 +25,20 @@ export const api = {
   me: () => request<{ user: any; company: any; branch: any }>('/api/auth/me'),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
 
+  // Setup
+  checkSetup: () => request<{ needsSetup: boolean }>('/api/auth/setup'),
+  setup: (data: {
+    companyName: string;
+    ownerName: string;
+    ownerEmail: string;
+    ownerPassword: string;
+    branchName?: string;
+    branchPhone?: string;
+    branchAddress?: string;
+  }) => request<{ user: any; token: string; company: any; branch: any }>('/api/auth/setup', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
+
   // Products
   getProducts: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
