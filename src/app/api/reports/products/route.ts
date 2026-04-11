@@ -33,40 +33,76 @@ export async function GET(request: NextRequest) {
       if (to) ((where.invoice as Record<string, unknown>).createdAt as Record<string, unknown>).lte = new Date(to);
     }
 
-    const grouped = await db.invoiceItem.groupBy({
-      by: ['productId'],
+    const soldItems = await db.invoiceItem.findMany({
       where,
-      _sum: { quantity: true, total: true },
-      _count: true,
-      orderBy: { _sum: { total: 'desc' } },
-      take: limit,
+      select: {
+        productId: true,
+        quantity: true,
+        total: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+            nameAr: true,
+            image: true,
+            sku: true,
+            cost: true,
+            category: { select: { name: true } },
+          },
+        },
+      },
     });
 
-    const productsWithDetails = await Promise.all(
-      grouped.map(async (item) => {
-        const product = item.productId
-          ? await db.product.findUnique({
-              where: { id: item.productId },
-              select: { id: true, name: true, nameAr: true, image: true, sku: true, category: { select: { name: true } } },
-            })
-          : null;
+    const groupedMap = new Map<string, {
+      productId: string | null;
+      name: string;
+      nameAr: string | null;
+      image: string | null;
+      sku: string | null;
+      category: string | null;
+      quantitySold: number;
+      revenue: number;
+      totalCost: number;
+      orderCount: number;
+    }>();
 
-        return {
-          productId: item.productId,
-          name: product?.name || 'Unknown',
-          nameAr: product?.nameAr || null,
-          image: product?.image || null,
-          sku: product?.sku || null,
-          category: product?.category?.name || null,
-          quantitySold: item._sum.quantity || 0,
-          revenue: Math.round((item._sum.total || 0) * 100) / 100,
-          orderCount: item._count,
-        };
-      })
-    );
+    for (const item of soldItems) {
+      const key = item.productId || 'unknown';
+      const existing = groupedMap.get(key) || {
+        productId: item.productId,
+        name: item.product?.name || 'Unknown',
+        nameAr: item.product?.nameAr || null,
+        image: item.product?.image || null,
+        sku: item.product?.sku || null,
+        category: item.product?.category?.name || null,
+        quantitySold: 0,
+        revenue: 0,
+        totalCost: 0,
+        orderCount: 0,
+      };
+
+      existing.quantitySold += item.quantity;
+      existing.revenue += item.total;
+      existing.totalCost += (item.product?.cost || 0) * item.quantity;
+      existing.orderCount += 1;
+
+      groupedMap.set(key, existing);
+    }
+
+    const productsWithDetails = Array.from(groupedMap.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, limit)
+      .map((item) => ({
+        ...item,
+        revenue: Math.round(item.revenue * 100) / 100,
+        totalCost: Math.round(item.totalCost * 100) / 100,
+        profit: Math.round((item.revenue - item.totalCost) * 100) / 100,
+      }));
 
     const totalRevenue = productsWithDetails.reduce((sum, item) => sum + item.revenue, 0);
     const totalQuantity = productsWithDetails.reduce((sum, item) => sum + item.quantitySold, 0);
+    const totalCost = productsWithDetails.reduce((sum, item) => sum + item.totalCost, 0);
+    const totalProfit = productsWithDetails.reduce((sum, item) => sum + item.profit, 0);
 
     return NextResponse.json({
       products: productsWithDetails,
@@ -74,6 +110,8 @@ export async function GET(request: NextRequest) {
         totalProducts: productsWithDetails.length,
         totalRevenue: Math.round(totalRevenue * 100) / 100,
         totalQuantitySold: totalQuantity,
+        totalCost: Math.round(totalCost * 100) / 100,
+        totalProfit: Math.round(totalProfit * 100) / 100,
       },
     });
   } catch (error) {

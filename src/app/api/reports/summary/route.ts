@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     };
 
     // Parallel queries
-    const [salesResult, invoiceCount, topProducts, openInvoices, cancelledInvoices] = await Promise.all([
+    const [salesResult, invoiceCount, topProducts, soldItems, openInvoices, cancelledInvoices] = await Promise.all([
       db.invoice.aggregate({
         where: invoiceWhereBase,
         _sum: { total: true, subtotal: true, taxAmount: true, discount: true },
@@ -70,6 +70,19 @@ export async function GET(request: NextRequest) {
         orderBy: { _sum: { total: 'desc' } },
         take: 10,
       }),
+      db.invoiceItem.findMany({
+        where: {
+          invoice: invoiceWhereBase,
+        },
+        select: {
+          quantity: true,
+          product: {
+            select: {
+              cost: true,
+            },
+          },
+        },
+      }),
       db.invoice.count({
         where: { ...whereBase, status: 'open' },
       }),
@@ -83,6 +96,8 @@ export async function GET(request: NextRequest) {
     const totalTax = Math.round((salesResult._sum.taxAmount || 0) * 100) / 100;
     const totalDiscount = Math.round((salesResult._sum.discount || 0) * 100) / 100;
     const avgOrder = invoiceCount > 0 ? Math.round((totalSales / invoiceCount) * 100) / 100 : 0;
+    const totalCost = soldItems.reduce((sum, item) => sum + ((item.product?.cost || 0) * item.quantity), 0);
+    const netProfit = Math.round((totalSales - totalCost) * 100) / 100;
 
     // Fetch product names for top products
     const topProductsWithNames = await Promise.all(
@@ -117,7 +132,7 @@ export async function GET(request: NextRequest) {
       totalDiscount,
       invoiceCount,
       avgOrder,
-      netProfit: totalSales,
+      netProfit,
       topProduct: topProductsWithNames[0]?.name || '—',
       topProducts: topProductsWithNames,
       openInvoices,

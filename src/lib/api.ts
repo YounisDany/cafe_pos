@@ -104,6 +104,7 @@ export const api = {
   // Settings
   getSettings: () => request<any>('/api/settings'),
   updateSettings: (data: any) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  clearSales: () => request('/api/settings/clear-sales', { method: 'DELETE' }),
   uploadLogo: (file: File) => {
     const formData = new FormData();
     formData.append('logo', file);
