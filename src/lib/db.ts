@@ -17,7 +17,7 @@ function createClient(): PrismaClient {
     });
   }
 
-  if (url.startsWith('libsql://')) {
+  if (url.startsWith('libsql://') || url.startsWith('https://')) {
     // Turso: use libsql adapter
     const { PrismaLibSQL } = require('@prisma/adapter-libsql');
     const { createClient } = require('@libsql/client');
@@ -33,7 +33,9 @@ function createClient(): PrismaClient {
   }
 
   // Fallback: use URL as-is
-  return new PrismaClient({ datasourceUrl: url });
+  // Ensure we at least have a valid format for Prisma engine if reaching here
+  const finalUrl = url.includes(':') ? url : `file:${url}`;
+  return new PrismaClient({ datasourceUrl: finalUrl });
 }
 
 export const db: PrismaClient = new Proxy({} as PrismaClient, {
