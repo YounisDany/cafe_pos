@@ -2495,6 +2495,19 @@ function SettingsView() {
     onError: (err: any) => toast.error(err.message || 'فشل حفظ الإعدادات'),
   });
 
+  const clearSalesMutation = useMutation({
+    mutationFn: () => api.clearSales(),
+    onSuccess: () => {
+      toast.success('تم حذف جميع المبيعات بنجاح');
+      qClient.invalidateQueries({ queryKey: ['invoices'] });
+      qClient.invalidateQueries({ queryKey: ['report-summary'] });
+      qClient.invalidateQueries({ queryKey: ['report-sales'] });
+      qClient.invalidateQueries({ queryKey: ['report-products'] });
+      qClient.invalidateQueries({ queryKey: ['report-cashiers'] });
+    },
+    onError: (err: any) => toast.error(err.message || 'فشل حذف المبيعات'),
+  });
+
   const handleSaveStore = () => {
     updateMutation.mutate({
       name: storeName,
@@ -3032,6 +3045,29 @@ function SettingsView() {
                         <p className="text-sm font-medium text-blue-700">معلومة</p>
                         <p className="text-xs text-blue-600 mt-1">تغيير نسبة الضريبة سيتم تطبيقه على الفواتير الجديدة فقط. الفواتير السابقة لن تتأثر.</p>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-red-50 border border-red-100">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-red-700">حذف جميع المبيعات</p>
+                        <p className="text-xs text-red-600 mt-1">
+                          سيؤدي هذا الإجراء إلى حذف جميع الفواتير والمدفوعات وبنود الفواتير نهائياً.
+                        </p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={clearSalesMutation.isPending}
+                        onClick={() => {
+                          const confirmed = window.confirm('هل أنت متأكد من حذف جميع المبيعات؟ لا يمكن التراجع عن هذا الإجراء.');
+                          if (confirmed) clearSalesMutation.mutate();
+                        }}
+                      >
+                        {clearSalesMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 ml-1" />}
+                        حذف المبيعات
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
