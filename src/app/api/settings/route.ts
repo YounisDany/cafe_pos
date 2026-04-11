@@ -37,7 +37,7 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json();
     const {
-      name, phone, email, address, taxRate, currency,
+      name, phone, email, address, taxRate, currency, logo,
       primaryColor, secondaryColor, accentColor,
       receiptHeader, receiptFooter, receiptShowLogo,
       taxNumber, currencySymbol, receiptWidth,
@@ -58,6 +58,7 @@ export async function PUT(request: NextRequest) {
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
+    if (logo !== undefined) updateData.logo = logo;
     if (phone !== undefined) updateData.phone = phone;
     if (email !== undefined) updateData.email = email;
     if (address !== undefined) updateData.address = address;

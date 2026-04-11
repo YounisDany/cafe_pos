@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAppStore, type View, type CartItem } from '@/lib/store';
 import { api } from '@/lib/api';
+import { applyTheme, removeTheme } from '@/lib/theme';
 import {
   LayoutDashboard, ShoppingCart, FileText, Package, FolderOpen,
   Building2, Users, BarChart3, Search, LogOut, Plus, Minus,
@@ -650,30 +651,29 @@ function POSView() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20, height: 0 }}
                     transition={{ duration: 0.2 }}
-                    className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors group"
+                    className="p-3 rounded-xl bg-gradient-to-l from-gray-50 to-white border border-gray-100 hover:border-[var(--theme-primary-200,#fde68a)] transition-all group"
                   >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">{fmt(item.price)} ر.س</p>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold leading-relaxed">{item.name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{fmt(item.price)} ر.س</p>
+                      </div>
+                      <p className="text-sm font-bold shrink-0" style={{ color: 'var(--theme-primary-700,#92400e)' }}>{fmt(item.total)}</p>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}>
-                        <Minus className="w-3 h-3" />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}>
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <span className="w-8 text-center text-sm font-bold font-mono">{item.quantity}</span>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}>
+                          <Plus className="w-3 h-3" />
+                        </Button>
+                      </div>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => removeFromCart(item.productId)}>
+                        <Trash2 className="w-3.5 h-3.5" />
                       </Button>
-                      <span className="w-8 text-center text-sm font-bold font-mono">{item.quantity}</span>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}>
-                        <Plus className="w-3 h-3" />
-                      </Button>
                     </div>
-                    <div className="text-left w-16">
-                      <p className="text-sm font-bold text-amber-700">{fmt(item.total)}</p>
-                    </div>
-                    <Button
-                      size="icon" variant="ghost" className="h-7 w-7 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => removeFromCart(item.productId)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -2560,6 +2560,24 @@ function SettingsView() {
 }
 
 // ═══════════════════════════════════════════════════════
+// THEME APPLIER
+// ═══════════════════════════════════════════════════════
+function ThemeApplier() {
+  const company = useAppStore(s => s.company);
+
+  useEffect(() => {
+    if (company?.primaryColor && company.primaryColor !== '#d97706') {
+      applyTheme(company.primaryColor);
+    } else {
+      removeTheme();
+    }
+    return () => removeTheme();
+  }, [company?.primaryColor]);
+
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════
 // MAIN APPLICATION
 // ═══════════════════════════════════════════════════════
 function AppContent() {
@@ -2601,6 +2619,7 @@ function AppContent() {
 
   return (
     <SidebarProvider>
+      <ThemeApplier />
       <div className="flex min-h-screen w-full">
         {/* Sidebar - right side for RTL */}
         <Sidebar side="right" variant="inset" collapsible="icon">

@@ -59,6 +59,9 @@ interface AppState {
   // Fullscreen
   isFullscreen: boolean;
   toggleFullscreen: () => void;
+
+  // Theme
+  updateCompany: (data: Partial<any>) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -143,6 +146,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         document.exitFullscreen();
         set({ isFullscreen: false });
       }
+    }
+  },
+
+  updateCompany: (data) => {
+    const { company } = get();
+    if (company) {
+      set({ company: { ...company, ...data } });
     }
   },
 }));
