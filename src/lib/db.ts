@@ -7,14 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient(): PrismaClient {
   const dbUrl = process.env.DATABASE_URL;
 
-  if (!dbUrl && process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'DATABASE_URL is not set. Add it in Vercel → Settings → Environment Variables.\n' +
-      'Format: libsql://your-db.turso.io?authToken=YOUR_TOKEN'
-    );
-  }
-
-  // Connect to Turso via libsql adapter (when URL starts with libsql://)
+  // Connect to Turso via libsql adapter (production)
   if (dbUrl?.startsWith('libsql://')) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PrismaLibSQL } = require('@prisma/adapter-libsql');
@@ -27,14 +20,14 @@ function createPrismaClient(): PrismaClient {
     });
 
     const adapter = new PrismaLibSQL(libsql);
-    return new PrismaClient({
-      adapter,
-      datasourceUrl: 'file:./dummy.db',
-    } as any);
+    // Only pass adapter - do NOT pass datasourceUrl (incompatible with adapters)
+    return new PrismaClient({ adapter } as any);
   }
 
-  // Local development: use SQLite file
-  return new PrismaClient();
+  // Local development: use SQLite file, override the placeholder URL
+  return new PrismaClient({
+    datasourceUrl: dbUrl || 'file:./db/custom.db',
+  });
 }
 
 // Lazy singleton: only create on first actual database call
@@ -50,7 +43,7 @@ export function getDb(): PrismaClient {
   return _db;
 }
 
-// Backward compatible: all existing db.xxx() calls still work
+// Backward compatible
 export const db = new Proxy({} as PrismaClient, {
   get(_target, prop) {
     return (getDb() as any)[prop];
