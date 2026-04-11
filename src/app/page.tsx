@@ -53,6 +53,10 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator
 } from '@/components/ui/dropdown-menu';
+import {
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer
+} from 'recharts';
 
 // ─── Category emoji/icon mapping ───
 const CATEGORY_EMOJIS: Record<string, string> = {
@@ -1767,24 +1771,26 @@ function UsersView() {
 // ═══════════════════════════════════════════════════════
 // REPORTS VIEW
 // ═══════════════════════════════════════════════════════
+const COLORS = ['#d97706', '#f59e0b', '#fbbf24', '#fcd34d', '#fde68a', '#10b981', '#3b82f6', '#8b5cf6'];
+
 function ReportsView() {
   const user = useAppStore(s => s.user);
   const [period, setPeriod] = useState('today');
   const [branchFilter, setBranchFilter] = useState('all');
 
-  const { data: summary, isLoading } = useQuery({
+  const { data: summary, isLoading: sumLoading } = useQuery({
     queryKey: ['report-summary', period, branchFilter],
     queryFn: () => api.getSummary({ period, ...(branchFilter !== 'all' ? { branchId: branchFilter } : {}) }),
   });
-  const { data: salesData } = useQuery({
+  const { data: salesData, isLoading: salesLoading } = useQuery({
     queryKey: ['report-sales', period],
     queryFn: () => api.getSales({ period: period === 'today' ? 'daily' : period === 'week' ? 'weekly' : 'monthly', days: period === 'today' ? '1' : period === 'week' ? '7' : '30' }),
   });
-  const { data: productReport } = useQuery({
+  const { data: productReport, isLoading: prodLoading } = useQuery({
     queryKey: ['report-products', period],
     queryFn: () => api.getProductReport({ period }),
   });
-  const { data: cashierReport } = useQuery({
+  const { data: cashierReport, isLoading: cashLoading } = useQuery({
     queryKey: ['report-cashiers', period],
     queryFn: () => api.getCashierReport({ period }),
     enabled: isManager(user?.role),
@@ -1795,10 +1801,12 @@ function ReportsView() {
     enabled: isOwner(user?.role),
   });
 
+  const isLoading = sumLoading || salesLoading || prodLoading || cashLoading;
+
   return (
     <AnimatedPage className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-xl font-bold">التقارير</h1>
+        <h1 className="text-xl font-bold">المبيعات والتقارير الشاملة</h1>
         <div className="flex gap-2 items-center">
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-32 h-9"><SelectValue /></SelectTrigger>
@@ -1823,101 +1831,405 @@ function ReportsView() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { title: 'إجمالي المبيعات', value: `${fmt(summary?.totalSales || 0)} ر.س`, color: 'text-emerald-600' },
-          { title: 'عدد الفواتير', value: String(summary?.invoiceCount || 0), color: 'text-blue-600' },
-          { title: 'متوسط الطلب', value: `${fmt(summary?.avgOrder || 0)} ر.س`, color: 'text-purple-600' },
-          { title: 'صافي الربح', value: `${fmt(summary?.netProfit || 0)} ر.س`, color: 'text-amber-600' },
+          { title: 'إجمالي المبيعات', value: `${fmt(summary?.totalSales || 0)} ر.س`, color: 'text-emerald-600', icon: <DollarSign className="w-4 h-4 text-emerald-500" /> },
+          { title: 'عدد الفواتير', value: String(summary?.invoiceCount || 0), color: 'text-blue-600', icon: <Receipt className="w-4 h-4 text-blue-500" /> },
+          { title: 'متوسط الطلب', value: `${fmt(summary?.avgOrder || 0)} ر.س`, color: 'text-purple-600', icon: <TrendingUp className="w-4 h-4 text-purple-500" /> },
+          { title: 'صافي الربح', value: `${fmt(summary?.netProfit || 0)} ر.س`, color: 'text-amber-600', icon: <Banknote className="w-4 h-4 text-amber-500" /> },
         ].map(card => (
-          <Card key={card.title} className="border-0 shadow-sm">
+          <Card key={card.title} className="border-0 shadow-sm relative overflow-hidden">
             <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">{card.title}</p>
-              <div className={`text-xl font-bold mt-1 ${card.color}`}>{isLoading ? <Skeleton className="h-7 w-20" /> : card.value}</div>
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-sm text-muted-foreground">{card.title}</p>
+                  <div className={`text-xl md:text-2xl font-bold mt-1 ${card.color}`}>{isLoading ? <Skeleton className="h-8 w-24" /> : card.value}</div>
+                </div>
+                <div className="p-2 bg-gray-50 rounded-lg">{card.icon}</div>
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Sales Chart */}
-      <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-2"><CardTitle className="text-base">مخطط المبيعات</CardTitle></CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[250px]" />
-          ) : (
-            <div className="h-[250px] flex items-end gap-1.5 pt-4">
-              {(salesData?.data || []).slice(0, 14).map((d: any, i: number) => {
-                const max = Math.max(...(salesData?.data || []).map((s: any) => s.totalSales || 0), 1);
-                const h = Math.max(4, ((d.totalSales || 0) / max) * 100);
-                return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-                    <motion.div
-                      initial={{ height: 0 }}
-                      animate={{ height: `${h}%` }}
-                      transition={{ duration: 0.4, delay: i * 0.03 }}
-                      className="w-full bg-gradient-to-t from-amber-500 to-amber-300 rounded-t-md min-h-[4px]"
-                    />
-                    <span className="text-[9px] text-muted-foreground truncate w-full text-center">{d.period || ''}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Main Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Sales Line Chart */}
+        <Card className="border-0 shadow-sm lg:col-span-2">
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="w-4 h-4 text-amber-600" /> اتجاه المبيعات</CardTitle></CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[250px] w-full" />
+            ) : (salesData?.data?.length > 0 ? (
+              <div className="h-[250px] w-full mt-4" dir="ltr">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={salesData.data}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <XAxis dataKey="period" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#6b7280' }} dy={10} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#6b7280' }} dx={-10} tickFormatter={(val) => `${val}`} />
+                    <RechartsTooltip cursor={{ stroke: '#f59e0b', strokeWidth: 1, strokeDasharray: '4 4' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Line type="monotone" dataKey="totalSales" name="المبيعات (ر.س)" stroke="#d97706" strokeWidth={3} dot={{ r: 4, fill: '#d97706', strokeWidth: 0 }} activeDot={{ r: 6, strokeWidth: 0 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+               <div className="h-[250px] flex items-center justify-center text-muted-foreground">لا توجد بيانات للمبيعات المحددة</div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* Products Pie Chart */}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><Package className="w-4 h-4 text-amber-600" /> نسبة إيرادات المنتجات</CardTitle></CardHeader>
+          <CardContent>
+             {isLoading ? (
+              <Skeleton className="h-[250px] w-full" />
+            ) : (productReport?.products?.length > 0 ? (
+              <div className="h-[250px] w-full mt-4" dir="ltr">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={productReport.products.slice(0, 5)} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="revenue" nameKey="name">
+                      {productReport.products.slice(0, 5).map((entry: any, index: number) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip formatter={(value) => `${fmt(Number(value))} ر.س`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', textAlign: 'right' }} />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+               <div className="h-[250px] flex items-center justify-center text-muted-foreground">لا توجد منتجات مباعة</div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Top Products */}
+        {/* Top Products Table */}
         <Card className="border-0 shadow-sm">
-          <CardHeader className="pb-2"><CardTitle className="text-base">أفضل المنتجات</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><BarChart3 className="w-4 h-4 text-amber-600" /> أفضل المنتجات مبيعاً</CardTitle></CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>المنتج</TableHead>
-                  <TableHead>الكمية</TableHead>
-                  <TableHead>المبيعات</TableHead>
+                  <TableHead>الكمية المباعة</TableHead>
+                  <TableHead>الإيرادات</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(productReport?.products || []).slice(0, 10).map((p: any, i: number) => (
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={3} className="text-center py-4"><Loader2 className="w-4 h-4 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
+                ) : (productReport?.products || []).slice(0, 7).map((p: any, i: number) => (
                   <TableRow key={i}>
-                    <TableCell className="text-sm">{p.name || '-'}</TableCell>
+                    <TableCell className="text-sm font-medium">{p.name || '-'}</TableCell>
                     <TableCell className="font-mono text-sm">{p.quantitySold || 0}</TableCell>
-                    <TableCell className="font-bold text-amber-700">{fmt(p.revenue || 0)}</TableCell>
+                    <TableCell className="font-bold text-amber-700">{fmt(p.revenue || 0)} <span className="text-[10px] text-muted-foreground font-normal">ر.س</span></TableCell>
                   </TableRow>
                 ))}
+                {!isLoading && (productReport?.products?.length === 0) && (
+                   <TableRow><TableCell colSpan={3} className="text-center py-4 text-muted-foreground">لا توجد بيانات</TableCell></TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
 
-        {/* Cashier Performance */}
+        {/* Cashier Performance - Combined Chart & Table */}
         {isManager(user?.role) && (
           <Card className="border-0 shadow-sm">
-            <CardHeader className="pb-2"><CardTitle className="text-base">أداء الكاشير</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>الكاشير</TableHead>
-                    <TableHead>الفواتير</TableHead>
-                    <TableHead>المبيعات</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(cashierReport?.cashiers || []).slice(0, 10).map((c: any, i: number) => (
-                    <TableRow key={i}>
-                      <TableCell className="text-sm">{c.name || '-'}</TableCell>
-                      <TableCell className="font-mono text-sm">{c.transactionCount || 0}</TableCell>
-                      <TableCell className="font-bold text-amber-700">{fmt(c.totalSales || 0)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+            <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><UserCircle className="w-4 h-4 text-emerald-600" /> أداء الموظفين</CardTitle></CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-[200px] w-full" />
+              ) : (cashierReport?.cashiers?.length > 0 ? (
+                <div className="h-[200px] w-full mt-2" dir="ltr">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={cashierReport.cashiers.slice(0, 5)} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e5e7eb" />
+                      <XAxis type="number" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: '#374151' }} width={80} axisLine={false} tickLine={false} />
+                      <RechartsTooltip cursor={{fill: '#fef3c7'}} formatter={(value) => `${fmt(Number(value))} ر.س`} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', textAlign: 'right' }} />
+                      <Bar dataKey="totalSales" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[200px] flex items-center justify-center text-muted-foreground">لا توجد بيانات للموظفين</div>
+              ))}
             </CardContent>
           </Card>
         )}
       </div>
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// SALES ANALYTICS VIEW
+// ═══════════════════════════════════════════════════════
+function SalesAnalyticsView() {
+  const user = useAppStore(s => s.user);
+  const [dateRange, setDateRange] = useState('today');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [cashierFilter, setCashierFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+
+  const effectiveFrom = useMemo(() => {
+    if (dateRange === 'custom') return customFrom ? new Date(customFrom).toISOString() : undefined;
+    const d = new Date();
+    d.setHours(0,0,0,0);
+    if (dateRange === 'today') return d.toISOString();
+    if (dateRange === 'week') { d.setDate(d.getDate() - d.getDay()); return d.toISOString(); }
+    if (dateRange === 'month') { d.setDate(1); return d.toISOString(); }
+    if (dateRange === 'year') { d.setMonth(0, 1); return d.toISOString(); }
+    return undefined;
+  }, [dateRange, customFrom]);
+
+  const effectiveTo = useMemo(() => {
+    if (dateRange === 'custom') return customTo ? (new Date(new Date(customTo).setHours(23,59,59,999))).toISOString() : undefined;
+    const d = new Date();
+    d.setHours(23,59,59,999);
+    return d.toISOString();
+  }, [dateRange, customTo]);
+
+  const { data: invoicesRes, isLoading: invoicesLoading } = useQuery({
+    queryKey: ['invoices-analytic', effectiveFrom, effectiveTo],
+    queryFn: () => api.getInvoices({ 
+      from: effectiveFrom || '', 
+      to: effectiveTo || '', 
+      limit: '1000',
+      status: 'paid' 
+    }),
+  });
+
+  const { data: usersData = [] } = useQuery({ queryKey: ['users'], queryFn: () => api.getUsers(), enabled: isManager(user?.role) });
+  const { data: categories = [] } = useQuery({ queryKey: ['categories'], queryFn: () => api.getCategories() });
+  const { data: products = [] } = useQuery({ queryKey: ['products'], queryFn: () => api.getProducts() });
+
+  const invoices = invoicesRes?.data || [];
+
+  const prodMap = useMemo(() => {
+    const map = new Map<string, any>();
+    products.forEach((p:any) => map.set(p.id, p));
+    return map;
+  }, [products]);
+
+  const aggregated = useMemo(() => {
+    let salesLimit = 0;
+    let items: any[] = [];
+    
+    invoices.forEach((inv: any) => {
+      if (cashierFilter !== 'all' && inv.userId !== cashierFilter) return;
+
+      (inv.items || []).forEach((item: any) => {
+        const prod = item.productId ? prodMap.get(item.productId) : null;
+        const catId = prod ? prod.categoryId : 'unknown';
+        const catName = prod ? categories.find((c:any) => c.id === catId)?.name || 'بدون تصنيف' : 'بدون تصنيف';
+
+        if (categoryFilter !== 'all' && catId !== categoryFilter) return;
+
+        items.push({
+          ...item,
+          catId,
+          catName,
+          cashierId: inv.userId,
+          cashierName: inv.user?.name || 'مجهول',
+          date: inv.createdAt,
+          invoiceId: inv.invoiceNo,
+        });
+        salesLimit += item.total;
+      });
+    });
+
+    const byProduct: Record<string, any> = {};
+    const byCategory: Record<string, any> = {};
+    const byCashier: Record<string, any> = {};
+
+    items.forEach(it => {
+      if(!byProduct[it.name]) byProduct[it.name] = { name: it.name, qty: 0, rev: 0 };
+      byProduct[it.name].qty += it.quantity;
+      byProduct[it.name].rev += it.total;
+
+      if(!byCategory[it.catName]) byCategory[it.catName] = { name: it.catName, qty: 0, rev: 0 };
+      byCategory[it.catName].qty += it.quantity;
+      byCategory[it.catName].rev += it.total;
+
+      if(!byCashier[it.cashierName]) byCashier[it.cashierName] = { name: it.cashierName, qty: 0, rev: 0 };
+      byCashier[it.cashierName].qty += it.quantity;
+      byCashier[it.cashierName].rev += it.total;
+    });
+
+    const topProducts = Object.values(byProduct).sort((a,b) => b.rev - a.rev);
+    const catSales = Object.values(byCategory).sort((a,b) => b.rev - a.rev);
+    const cashierSales = Object.values(byCashier).sort((a,b) => b.rev - a.rev);
+
+    items.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return { items, totalRevenue: salesLimit, topProducts, catSales, cashierSales };
+  }, [invoices, cashierFilter, categoryFilter, prodMap, categories]);
+
+  return (
+    <AnimatedPage className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-xl font-bold">المبيعات التفصيلية</h1>
+      </div>
+
+      <Card className="border-0 shadow-sm bg-gray-50/50">
+        <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">الفترة الزمنية</Label>
+            <Select value={dateRange} onValueChange={setDateRange}>
+              <SelectTrigger className="bg-white"><SelectValue/></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">اليوم</SelectItem>
+                <SelectItem value="week">هذا الأسبوع</SelectItem>
+                <SelectItem value="month">هذا الشهر</SelectItem>
+                <SelectItem value="year">هذه السنة</SelectItem>
+                <SelectItem value="custom">مخصص...</SelectItem>
+              </SelectContent>
+            </Select>
+            {dateRange === 'custom' && (
+              <div className="flex gap-2 mt-2">
+                <Input type="date" className="h-8 text-xs bg-white" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} />
+                <Input type="date" className="h-8 text-xs bg-white" value={customTo} onChange={e=>setCustomTo(e.target.value)} />
+              </div>
+            )}
+          </div>
+          
+          <div className="space-y-1.5">
+            <Label className="text-xs">التصنيف</Label>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="bg-white"><SelectValue/></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل التصنيفات</SelectItem>
+                {categories.map((c:any) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">الكاشير</Label>
+            <Select value={cashierFilter} onValueChange={setCashierFilter} disabled={!isManager(user?.role)}>
+              <SelectTrigger className="bg-white"><SelectValue placeholder="كل الموظفين" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الموظفين</SelectItem>
+                {usersData.map((u:any) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5 flex flex-col justify-end">
+             <div className="px-3 py-2 bg-amber-100/50 border border-amber-200 rounded-lg text-center flex-1 flex flex-col justify-center">
+                 <p className="text-[10px] text-amber-800 font-bold mb-1">الإيراد المصفى (ر.س)</p>
+                 <p className="text-lg font-black text-amber-900">{fmt(aggregated.totalRevenue)}</p>
+             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><FolderOpen className="w-4 h-4 text-emerald-600"/> مبيعات التصنيفات</CardTitle></CardHeader>
+          <CardContent className="p-0">
+             <ScrollArea className="h-[200px]">
+               <Table>
+                 <TableHeader><TableRow><TableHead>التصنيف</TableHead><TableHead>إيراد</TableHead></TableRow></TableHeader>
+                 <TableBody>
+                   {aggregated.catSales.map((c:any, i:number) => (
+                     <TableRow key={i}><TableCell className="text-xs py-2">{c.name}</TableCell><TableCell className="text-xs font-bold text-emerald-700 py-2" dir="ltr">{fmt(c.rev)}</TableCell></TableRow>
+                   ))}
+                   {aggregated.catSales.length === 0 && <TableRow><TableCell colSpan={2} className="text-center py-4 text-xs text-muted-foreground">لا يوجد</TableCell></TableRow>}
+                 </TableBody>
+               </Table>
+             </ScrollArea>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Package className="w-4 h-4 text-blue-600"/> أكثر المنتجات مبيعاً</CardTitle></CardHeader>
+          <CardContent className="p-0">
+             <ScrollArea className="h-[200px]">
+               <Table>
+                 <TableHeader><TableRow><TableHead>المنتج</TableHead><TableHead>إيراد</TableHead></TableRow></TableHeader>
+                 <TableBody>
+                   {aggregated.topProducts.map((p:any, i:number) => (
+                     <TableRow key={i}><TableCell className="text-xs py-2 truncate max-w-[120px]">{p.name} <span className="text-[10px] text-muted-foreground ml-1">x{p.qty}</span></TableCell><TableCell className="text-xs font-bold text-blue-700 py-2" dir="ltr">{fmt(p.rev)}</TableCell></TableRow>
+                   ))}
+                   {aggregated.topProducts.length === 0 && <TableRow><TableCell colSpan={2} className="text-center py-4 text-xs text-muted-foreground">لا يوجد</TableCell></TableRow>}
+                 </TableBody>
+               </Table>
+             </ScrollArea>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><UserCircle className="w-4 h-4 text-purple-600"/> مبيعات الموظفين</CardTitle></CardHeader>
+          <CardContent className="p-0">
+             <ScrollArea className="h-[200px]">
+               <Table>
+                 <TableHeader><TableRow><TableHead>الكاشير</TableHead><TableHead>إيراد</TableHead></TableRow></TableHeader>
+                 <TableBody>
+                   {aggregated.cashierSales.map((c:any, i:number) => (
+                     <TableRow key={i}><TableCell className="text-xs py-2">{c.name}</TableCell><TableCell className="text-xs font-bold text-purple-700 py-2" dir="ltr">{fmt(c.rev)}</TableCell></TableRow>
+                   ))}
+                   {aggregated.cashierSales.length === 0 && <TableRow><TableCell colSpan={2} className="text-center py-4 text-xs text-muted-foreground">لا يوجد</TableCell></TableRow>}
+                 </TableBody>
+               </Table>
+             </ScrollArea>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-2">
+           <div className="flex justify-between items-center">
+             <CardTitle className="text-sm">سجل المبيعات التفصيلي</CardTitle>
+             <Badge variant="secondary">{aggregated.items.length} منتج مباع</Badge>
+           </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>التاريخ والوقت</TableHead>
+                <TableHead>رقم الفاتورة</TableHead>
+                <TableHead>المنتج</TableHead>
+                <TableHead>التصنيف</TableHead>
+                <TableHead>الكاشير</TableHead>
+                <TableHead>الكمية</TableHead>
+                <TableHead>الإجمالي</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoicesLoading ? (
+                <TableRow><TableCell colSpan={7} className="text-center py-6"><Loader2 className="w-4 h-4 animate-spin mx-auto text-muted-foreground" /></TableCell></TableRow>
+              ) : aggregated.items.slice(0, 100).map((it:any, i:number) => {
+                const dateObj = new Date(it.date);
+                const isToday = dateObj.toDateString() === new Date().toDateString();
+                const dStr = isToday ? dateObj.toLocaleTimeString('ar-SA', { hour: '2-digit', minute:'2-digit' }) : dateObj.toLocaleString('ar-SA', { dateStyle:'short', timeStyle: 'short' });
+                return (
+                 <TableRow key={i}>
+                  <TableCell className="text-xs font-mono text-muted-foreground" dir="ltr">{dStr}</TableCell>
+                  <TableCell className="font-mono text-[10px] text-muted-foreground">{it.invoiceId}</TableCell>
+                  <TableCell className="text-sm font-medium">{it.name}</TableCell>
+                  <TableCell className="text-xs">{it.catName}</TableCell>
+                  <TableCell className="text-[11px]">{it.cashierName}</TableCell>
+                  <TableCell className="font-mono text-xs">{it.quantity}</TableCell>
+                  <TableCell className="font-bold text-amber-700">{fmt(it.total)}</TableCell>
+                 </TableRow>
+                )
+              })}
+              {aggregated.items.length === 0 && !invoicesLoading && (
+                <TableRow><TableCell colSpan={7} className="text-center py-6 text-muted-foreground">لا توجد مبيعات متطابقة مع التصفية</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+          {aggregated.items.length > 100 && (
+             <div className="p-3 text-center text-[10px] text-muted-foreground border-t bg-gray-50">يتم عرض أحدث 100 سجل فقط لتسريع التصفح. إجماليات الرسوم البيانية والجداول أعلاه محسوبة لكل السجلات المطابقة للتصفية.</div>
+          )}
+        </CardContent>
+      </Card>
     </AnimatedPage>
   );
 }
@@ -2804,6 +3116,7 @@ function AppContent() {
     ...(isOwner(user?.role) ? [{ view: 'branches' as View, label: 'الفروع', icon: Building2 }] : []),
     ...(isManager(user?.role) ? [{ view: 'users' as View, label: 'المستخدمين', icon: Users }] : []),
     { view: 'reports' as View, label: 'التقارير', icon: BarChart3 },
+    { view: 'sales-analytics' as View, label: 'المبيعات التفصيلية', icon: TrendingUp },
     ...(isManager(user?.role) ? [{ view: 'audit-logs' as View, label: 'سجل العمليات', icon: Search }] : []),
     ...(isOwner(user?.role) ? [{ view: 'settings' as View, label: 'الإعدادات', icon: Settings }] : []),
   ];
@@ -2818,6 +3131,7 @@ function AppContent() {
       case 'branches': return <BranchesView />;
       case 'users': return <UsersView />;
       case 'reports': return <ReportsView />;
+      case 'sales-analytics': return <SalesAnalyticsView />;
       case 'audit-logs': return <AuditLogsView />;
       case 'settings': return <SettingsView />;
       default: return <POSView />;

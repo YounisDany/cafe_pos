@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type View = 'pos' | 'dashboard' | 'invoices' | 'products' | 'categories' | 'branches' | 'users' | 'reports' | 'audit-logs' | 'settings';
+export type View = 'pos' | 'dashboard' | 'invoices' | 'products' | 'categories' | 'branches' | 'users' | 'reports' | 'sales-analytics' | 'audit-logs' | 'settings';
 
 export interface CartItem {
   productId: string;
