@@ -1,44 +1,53 @@
 import { PrismaClient } from '@prisma/client';
 
-// Lazy singleton - only connects to DB on first actual query call
-let _db: PrismaClient | undefined;
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
 
-function initDb(): PrismaClient {
-  const dbUrl = process.env.DATABASE_URL;
+let _db: PrismaClient | null = null;
 
-  // Production: must have DATABASE_URL
-  if (!dbUrl) {
-    throw new Error(
-      'DATABASE_URL is not set! Go to Vercel → Settings → Environment Variables and add:\n' +
-      'DATABASE_URL = libsql://cafe-younisdany.aws-ap-northeast-1.turso.io?authToken=YOUR_TOKEN'
-    );
+function createClient(): PrismaClient {
+  // Read URL from env
+  const url = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL;
+
+  if (!url) {
+    // Development: local SQLite
+    return new PrismaClient({
+      datasourceUrl: 'file:./db/custom.db',
+    });
   }
 
-  // Turso/libsql connection via driver adapter
-  if (dbUrl.startsWith('libsql://')) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { PrismaLibSQL } = require('@prisma/adapter-libsql');
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { createClient } = require('@libsql/client');
+  if (url.startsWith('libsql://')) {
+    // Turso: use libsql adapter
+    const { PrismaLibSQL } = require('@prisma/adapter-libsql');
+    const { createClient } = require('@libsql/client');
 
-      const client = createClient({ url: dbUrl });
-      const adapter = new PrismaLibSQL(client);
-      return new PrismaClient({ adapter } as any);
-    } catch (e) {
-      console.error('Failed to initialize libsql adapter:', e);
-      throw new Error('Failed to connect to Turso database. Check @prisma/adapter-libsql installation.');
-    }
+    const libsql = createClient({
+      url,
+      authToken: process.env.TURSO_AUTH_TOKEN || process.env.DATABASE_AUTH_TOKEN || '',
+    });
+
+    return new PrismaClient({
+      adapter: new PrismaLibSQL(libsql),
+    } as any);
   }
 
-  // Local SQLite
-  return new PrismaClient({ datasourceUrl: dbUrl });
+  // Fallback: use URL as-is
+  return new PrismaClient({ datasourceUrl: url });
 }
 
-// Proxy: delays initialization until first actual database call
-export const db = new Proxy({} as PrismaClient, {
-  get(_, prop) {
-    if (!_db) _db = initDb();
-    return (_db as any)[prop];
+export const db: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_, prop, receiver) {
+    if (!_db) {
+      _db = createClient();
+      if (process.env.NODE_ENV !== 'production') {
+        globalForPrisma.prisma = _db;
+      }
+    }
+    const value = Reflect.get(_db, prop, receiver);
+    if (typeof value === 'function') {
+      return value.bind(_db);
+    }
+    return value;
   },
 });
