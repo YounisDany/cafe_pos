@@ -83,7 +83,7 @@ const queryClient = new QueryClient({
 });
 
 // ─── Currency formatter ───
-const fmt = (n: number) => n.toFixed(2);
+const fmt = (n: number) => (n ?? 0).toFixed(2);
 
 // ─── Role helpers ───
 function isOwner(role?: string) { return role === 'owner'; }
