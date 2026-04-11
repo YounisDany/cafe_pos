@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // Expose DATABASE_URL and DATABASE_AUTH_TOKEN to server-side code
+  serverExternalPackages: ["@prisma/adapter-libsql", "@libsql/client"],
 };
 
 export default nextConfig;
