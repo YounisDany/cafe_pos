@@ -15,7 +15,7 @@ import {
   RefreshCw, CheckCircle, XCircle, AlertCircle, Loader2,
   ArrowUpDown, Filter, CalendarDays, Shield, Menu, UserCircle,
   Home, Store, ChevronLeft, Phone, MapPin, Hash, Percent,
-  Sparkles, MousePointerClick, Keyboard
+  Sparkles, MousePointerClick, Keyboard, Settings, Upload, Palette, FileSignature, Globe, Info
 } from 'lucide-react';
 
 // shadcn/ui imports
@@ -1814,6 +1814,752 @@ function AuditLogsView() {
 }
 
 // ═══════════════════════════════════════════════════════
+// RECEIPT PREVIEW COMPONENT
+// ═══════════════════════════════════════════════════════
+function ReceiptPreview({ settings, primaryColor }: { settings: any; primaryColor: string }) {
+  const now = new Date();
+  const invNo = `INV-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-0001`;
+  const sym = settings?.currencySymbol || 'ر.س';
+  const items = [
+    { name: 'كابتشينو', qty: 2, price: 20 },
+    { name: 'كيك شوكولاتة', qty: 1, price: 25 },
+  ];
+  const sub = items.reduce((s: number, i: any) => s + i.qty * i.price, 0);
+  const tax = Math.round(sub * (settings?.taxRate || 15) / 100 * 100) / 100;
+  const total = sub + tax;
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg p-4 mx-auto" style={{ maxWidth: `${settings?.receiptWidth === '58' ? 220 : 300}px`, fontFamily: 'monospace', fontSize: '11px', lineHeight: '1.5' }}>
+      {/* Header */}
+      <div className="text-center mb-3">
+        {settings?.receiptShowLogo !== false && settings?.logo && (
+          <div className="w-12 h-12 mx-auto mb-2 rounded-lg overflow-hidden bg-gray-100">
+            <img src={settings.logo} alt="logo" className="w-full h-full object-cover" />
+          </div>
+        )}
+        <div className="font-bold text-sm" style={{ color: primaryColor }}>{settings?.name || 'اسم المتجر'}</div>
+        {settings?.phone && <div className="text-gray-500">{settings.phone}</div>}
+        {settings?.address && <div className="text-gray-500 text-[10px]">{settings.address}</div>}
+        {settings?.taxNumber && <div className="text-gray-400 text-[10px]">ض.ر: {settings.taxNumber}</div>}
+      </div>
+
+      {/* Custom header */}
+      {settings?.receiptHeader && (
+        <div className="text-center text-[10px] italic text-gray-500 mb-2 pb-2 border-b border-dashed border-gray-200">
+          {settings.receiptHeader}
+        </div>
+      )}
+
+      {/* Invoice info */}
+      <div className="flex justify-between text-[10px] text-gray-500 mb-2 pb-2 border-b border-dashed border-gray-200">
+        <span>{invNo}</span>
+        <span>{now.toLocaleDateString('ar-SA')}</span>
+        <span>{now.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+
+      {/* Items */}
+      <div className="space-y-1 mb-2">
+        {items.map((item: any, i: number) => (
+          <div key={i} className="flex justify-between">
+            <div>
+              <span>{item.name}</span>
+              <span className="text-gray-400"> ×{item.qty}</span>
+            </div>
+            <span className="font-bold">{(item.qty * item.price).toFixed(2)} {sym}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Totals */}
+      <div className="border-t border-dashed border-gray-200 pt-2 space-y-1">
+        <div className="flex justify-between text-gray-500">
+          <span>المجموع الفرعي</span><span>{sub.toFixed(2)} {sym}</span>
+        </div>
+        {settings?.showTaxOnReceipt !== false && (
+          <div className="flex justify-between text-gray-500">
+            <span>الضريبة ({settings?.taxRate || 15}%)</span><span>{tax.toFixed(2)} {sym}</span>
+          </div>
+        )}
+        <div className="flex justify-between font-bold text-sm" style={{ color: primaryColor }}>
+          <span>الإجمالي</span><span>{total.toFixed(2)} {sym}</span>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="text-center mt-3 pt-2 border-t border-dashed border-gray-200">
+        <div className="text-[10px] text-gray-400">تم الدفع: نقداً</div>
+        {settings?.receiptFooter && (
+          <div className="text-[10px] italic text-gray-500 mt-1">{settings.receiptFooter}</div>
+        )}
+        <div className="text-[9px] text-gray-300 mt-1">شكراً لزيارتكم 🤍</div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
+// SETTINGS VIEW
+// ═══════════════════════════════════════════════════════
+function SettingsView() {
+  const { user, company, setAuth } = useAppStore();
+  const [activeTab, setActiveTab] = useState('store');
+  const qClient = useQueryClient();
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => api.getSettings(),
+  });
+
+  // Form states
+  const [storeName, setStoreName] = useState('');
+  const [storePhone, setStorePhone] = useState('');
+  const [storeEmail, setStoreEmail] = useState('');
+  const [storeAddress, setStoreAddress] = useState('');
+  const [taxRate, setTaxRate] = useState('15');
+  const [currency, setCurrency] = useState('SAR');
+  const [currencySymbol, setCurrencySymbol] = useState('ر.س');
+  const [taxNumber, setTaxNumber] = useState('');
+
+  // Theme
+  const [primaryColor, setPrimaryColor] = useState('#d97706');
+  const [secondaryColor, setSecondaryColor] = useState('#78350f');
+  const [accentColor, setAccentColor] = useState('#fbbf24');
+
+  // Receipt
+  const [receiptHeader, setReceiptHeader] = useState('');
+  const [receiptFooter, setReceiptFooter] = useState('');
+  const [receiptShowLogo, setReceiptShowLogo] = useState(true);
+  const [receiptWidth, setReceiptWidth] = useState('80');
+  const [showTaxOnReceipt, setShowTaxOnReceipt] = useState(true);
+  const [showDiscountOnReceipt, setShowDiscountOnReceipt] = useState(true);
+
+  // Upload state
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync settings when loaded
+  useEffect(() => {
+    if (settings) {
+      setStoreName(settings.name || '');
+      setStorePhone(settings.phone || '');
+      setStoreEmail(settings.email || '');
+      setStoreAddress(settings.address || '');
+      setTaxRate(String(settings.taxRate || 15));
+      setCurrency(settings.currency || 'SAR');
+      setCurrencySymbol(settings.currencySymbol || 'ر.س');
+      setTaxNumber(settings.taxNumber || '');
+      setPrimaryColor(settings.primaryColor || '#d97706');
+      setSecondaryColor(settings.secondaryColor || '#78350f');
+      setAccentColor(settings.accentColor || '#fbbf24');
+      setReceiptHeader(settings.receiptHeader || '');
+      setReceiptFooter(settings.receiptFooter || '');
+      setReceiptShowLogo(settings.receiptShowLogo !== false);
+      setReceiptWidth(settings.receiptWidth || '80');
+      setShowTaxOnReceipt(settings.showTaxOnReceipt !== false);
+      setShowDiscountOnReceipt(settings.showDiscountOnReceipt !== false);
+    }
+  }, [settings]);
+
+  const updateMutation = useMutation({
+    mutationFn: (data: any) => api.updateSettings(data),
+    onSuccess: (updatedCompany) => {
+      toast.success('تم حفظ الإعدادات بنجاح');
+      qClient.invalidateQueries({ queryKey: ['settings'] });
+      // Update local auth state
+      if (user && company) {
+        setAuth(user, useAppStore.getState().token, {
+          ...company,
+          ...updatedCompany,
+        }, useAppStore.getState().branch);
+      }
+    },
+    onError: (err: any) => toast.error(err.message || 'فشل حفظ الإعدادات'),
+  });
+
+  const handleSaveStore = () => {
+    updateMutation.mutate({
+      name: storeName,
+      phone: storePhone,
+      email: storeEmail,
+      address: storeAddress,
+      taxRate: parseFloat(taxRate) || 15,
+      currency,
+      currencySymbol,
+      taxNumber,
+    });
+  };
+
+  const handleSaveTheme = () => {
+    updateMutation.mutate({
+      primaryColor,
+      secondaryColor,
+      accentColor,
+    });
+  };
+
+  const handleSaveReceipt = () => {
+    updateMutation.mutate({
+      receiptHeader,
+      receiptFooter,
+      receiptShowLogo,
+      receiptWidth,
+      showTaxOnReceipt,
+      showDiscountOnReceipt,
+    });
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('حجم الملف يتجاوز 2MB');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const res = await api.uploadLogo(file);
+      updateMutation.mutate({ logo: res.url });
+      toast.success('تم رفع الشعار بنجاح');
+    } catch (err: any) {
+      toast.error(err.message || 'فشل رفع الشعار');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Preview settings
+  const previewSettings = {
+    name: storeName,
+    phone: storePhone,
+    email: storeEmail,
+    address: storeAddress,
+    logo: settings?.logo || company?.logo,
+    taxRate: parseFloat(taxRate),
+    taxNumber,
+    currencySymbol,
+    receiptHeader,
+    receiptFooter,
+    receiptShowLogo,
+    receiptWidth,
+    showTaxOnReceipt,
+    showDiscountOnReceipt,
+  };
+
+  const presetThemes = [
+    { name: 'عنبري', primary: '#d97706', secondary: '#78350f', accent: '#fbbf24', bg: 'bg-amber-100' },
+    { name: 'أخضر زمردي', primary: '#059669', secondary: '#064e3b', accent: '#34d399', bg: 'bg-emerald-100' },
+    { name: 'أزرق سماوي', primary: '#0284c7', secondary: '#0c4a6e', accent: '#38bdf8', bg: 'bg-sky-100' },
+    { name: 'بنفسجي', primary: '#7c3aed', secondary: '#3b0764', accent: '#a78bfa', bg: 'bg-violet-100' },
+    { name: 'وردي', primary: '#db2777', secondary: '#500724', accent: '#f472b6', bg: 'bg-pink-100' },
+    { name: 'أحمر ناري', primary: '#dc2626', secondary: '#450a0a', accent: '#f87171', bg: 'bg-red-100' },
+  ];
+
+  if (user?.role !== 'owner') {
+    return (
+      <AnimatedPage className="flex items-center justify-center h-96">
+        <Card className="border-0 shadow-sm"><CardContent className="py-12 text-center"><Shield className="w-10 h-10 mx-auto mb-2 text-muted-foreground" /><p className="text-muted-foreground">هذه الصفحة متاحة فقط للمالك</p></CardContent></Card>
+      </AnimatedPage>
+    );
+  }
+
+  const tabs = [
+    { id: 'store', label: 'المتجر', icon: Store },
+    { id: 'theme', label: 'المظهر والألوان', icon: Palette },
+    { id: 'receipt', label: 'الفاتورة', icon: FileSignature },
+    { id: 'general', label: 'عام', icon: Settings },
+  ];
+
+  return (
+    <AnimatedPage className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 flex items-center justify-center shadow-lg shadow-amber-500/20">
+            <Settings className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold">الإعدادات</h1>
+            <p className="text-xs text-muted-foreground">تخصيص النظام حسب احتياجات متجرك</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs Navigation */}
+      <div className="flex gap-1 p-1 bg-muted/50 rounded-xl">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+              activeTab === tab.id
+                ? 'bg-white text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <tab.icon className="w-4 h-4" />
+            <span className="hidden sm:inline">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+          <Skeleton className="h-[500px] w-full rounded-2xl" />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+
+            {/* ─── STORE TAB ─── */}
+            {activeTab === 'store' && (
+              <>
+                <Card className="border-0 shadow-sm overflow-hidden">
+                  <CardHeader className="bg-gradient-to-l from-amber-50 to-white pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                        <Store className="w-5 h-5 text-amber-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">معلومات المتجر</CardTitle>
+                        <CardDescription className="text-xs">البيانات الأساسية لمتجرك</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-6 space-y-5">
+                    {/* Logo Upload */}
+                    <div className="flex items-center gap-6">
+                      <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-50 border-2 border-dashed border-amber-200 flex items-center justify-center overflow-hidden transition-all group-hover:border-amber-400 group-hover:shadow-md">
+                          {settings?.logo ? (
+                            <img src={settings.logo} alt="logo" className="w-full h-full object-cover" />
+                          ) : (
+                            <Upload className="w-6 h-6 text-amber-400" />
+                          )}
+                        </div>
+                        <div className="absolute inset-0 rounded-2xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Edit className="w-5 h-5 text-white" />
+                        </div>
+                        {uploading && (
+                          <div className="absolute inset-0 rounded-2xl bg-white/80 flex items-center justify-center">
+                            <Loader2 className="w-5 h-5 text-amber-600 animate-spin" />
+                          </div>
+                        )}
+                        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">شعار المتجر</p>
+                        <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG — حد أقصى 2MB</p>
+                        {settings?.logo && (
+                          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50 mt-2 h-7 text-xs" onClick={() => updateMutation.mutate({ logo: null })}>
+                            <Trash2 className="w-3 h-3 ml-1" /> إزالة الشعار
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>اسم المتجر</Label>
+                        <Input value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="مقهى الأرواح" className="h-10" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>رقم الهاتف</Label>
+                        <Input value={storePhone} onChange={e => setStorePhone(e.target.value)} placeholder="+966XXXXXXXXX" dir="ltr" className="h-10 text-left" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>البريد الإلكتروني</Label>
+                        <Input value={storeEmail} onChange={e => setStoreEmail(e.target.value)} placeholder="info@example.com" dir="ltr" type="email" className="h-10 text-left" />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>الرقم الضريبي</Label>
+                        <Input value={taxNumber} onChange={e => setTaxNumber(e.target.value)} placeholder="300000000000003" dir="ltr" className="h-10 text-left" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>العنوان</Label>
+                      <Textarea value={storeAddress} onChange={e => setStoreAddress(e.target.value)} placeholder="الرياض، حي الملقا" className="min-h-[60px] resize-none" />
+                    </div>
+                  </CardContent>
+                  <CardFooter className="border-t bg-muted/30 px-6 py-3">
+                    <Button onClick={handleSaveStore} disabled={updateMutation.isPending} className="bg-gradient-to-l from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white shadow-md">
+                      {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4 ml-1" />}
+                      حفظ التغييرات
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </>
+            )}
+
+            {/* ─── THEME TAB ─── */}
+            {activeTab === 'theme' && (
+              <Card className="border-0 shadow-sm overflow-hidden">
+                <CardHeader className="bg-gradient-to-l from-violet-50 to-white pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
+                      <Palette className="w-5 h-5 text-violet-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">المظهر والألوان</CardTitle>
+                      <CardDescription className="text-xs">اختر الألوان التي تناسب علامتك التجارية</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6 space-y-6">
+                  {/* Preset Themes */}
+                  <div>
+                    <p className="text-sm font-medium mb-3">سمات جاهزة</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {presetThemes.map((theme) => (
+                        <button
+                          key={theme.name}
+                          onClick={() => {
+                            setPrimaryColor(theme.primary);
+                            setSecondaryColor(theme.secondary);
+                            setAccentColor(theme.accent);
+                          }}
+                          className={`relative p-3 rounded-xl border-2 transition-all hover:shadow-md ${
+                            primaryColor === theme.primary ? 'border-current shadow-md scale-[1.02]' : 'border-transparent'
+                          }`}
+                          style={{ borderColor: primaryColor === theme.primary ? theme.primary : undefined }}
+                        >
+                          <div className="flex gap-1 mb-2">
+                            <div className="w-6 h-6 rounded-full" style={{ backgroundColor: theme.primary }} />
+                            <div className="w-6 h-6 rounded-full" style={{ backgroundColor: theme.secondary }} />
+                            <div className="w-6 h-6 rounded-full" style={{ backgroundColor: theme.accent }} />
+                          </div>
+                          <p className="text-xs font-medium">{theme.name}</p>
+                          {primaryColor === theme.primary && (
+                            <CheckCircle className="w-4 h-4 absolute top-2 left-2 text-green-500" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Custom Colors */}
+                  <div className="border-t pt-5">
+                    <p className="text-sm font-medium mb-3">ألوان مخصصة</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs">اللون الأساسي</Label>
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={primaryColor}
+                              onChange={e => setPrimaryColor(e.target.value)}
+                              className="w-10 h-10 rounded-lg border-0 cursor-pointer p-0"
+                            />
+                          </div>
+                          <Input
+                            value={primaryColor}
+                            onChange={e => setPrimaryColor(e.target.value)}
+                            dir="ltr"
+                            className="h-10 font-mono text-sm text-left flex-1"
+                            maxLength={7}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">اللون الثانوي</Label>
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={secondaryColor}
+                              onChange={e => setSecondaryColor(e.target.value)}
+                              className="w-10 h-10 rounded-lg border-0 cursor-pointer p-0"
+                            />
+                          </div>
+                          <Input
+                            value={secondaryColor}
+                            onChange={e => setSecondaryColor(e.target.value)}
+                            dir="ltr"
+                            className="h-10 font-mono text-sm text-left flex-1"
+                            maxLength={7}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs">لون التمييز</Label>
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={accentColor}
+                              onChange={e => setAccentColor(e.target.value)}
+                              className="w-10 h-10 rounded-lg border-0 cursor-pointer p-0"
+                            />
+                          </div>
+                          <Input
+                            value={accentColor}
+                            onChange={e => setAccentColor(e.target.value)}
+                            dir="ltr"
+                            className="h-10 font-mono text-sm text-left flex-1"
+                            maxLength={7}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Color Preview */}
+                  <div className="border-t pt-5">
+                    <p className="text-sm font-medium mb-3">معاينة</p>
+                    <div className="flex gap-3 items-center">
+                      <div className="flex-1 p-4 rounded-xl" style={{ backgroundColor: primaryColor }}>
+                        <span className="text-white text-sm font-bold">أساسي</span>
+                      </div>
+                      <div className="flex-1 p-4 rounded-xl" style={{ backgroundColor: secondaryColor }}>
+                        <span className="text-white text-sm font-bold">ثانوي</span>
+                      </div>
+                      <div className="flex-1 p-4 rounded-xl border" style={{ backgroundColor: accentColor }}>
+                        <span className="text-xs font-bold" style={{ color: secondaryColor }}>تمييز</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="border-t bg-muted/30 px-6 py-3">
+                  <Button onClick={handleSaveTheme} disabled={updateMutation.isPending} className="bg-gradient-to-l from-violet-600 to-violet-700 hover:from-violet-700 hover:to-violet-800 text-white shadow-md">
+                    {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4 ml-1" />}
+                    تطبيق الألوان
+                  </Button>
+                </CardFooter>
+              </Card>
+            )}
+
+            {/* ─── RECEIPT TAB ─── */}
+            {activeTab === 'receipt' && (
+              <Card className="border-0 shadow-sm overflow-hidden">
+                <CardHeader className="bg-gradient-to-l from-emerald-50 to-white pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                      <FileSignature className="w-5 h-5 text-emerald-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">تخصيص الفاتورة</CardTitle>
+                      <CardDescription className="text-xs">أضف لمستك الشخصية على إيصالات الطباعة</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6 space-y-5">
+                  {/* Receipt width */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">عرض ورق الطباعة</Label>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setReceiptWidth('80')}
+                        className={`flex-1 p-3 rounded-xl border-2 transition-all text-center ${
+                          receiptWidth === '80' ? 'border-emerald-500 bg-emerald-50 shadow-sm' : 'border-transparent bg-muted/50 hover:bg-muted'
+                        }`}
+                      >
+                        <Printer className="w-5 h-5 mx-auto mb-1" />
+                        <p className="text-xs font-bold">80 مم</p>
+                        <p className="text-[10px] text-muted-foreground">قياسي</p>
+                      </button>
+                      <button
+                        onClick={() => setReceiptWidth('58')}
+                        className={`flex-1 p-3 rounded-xl border-2 transition-all text-center ${
+                          receiptWidth === '58' ? 'border-emerald-500 bg-emerald-50 shadow-sm' : 'border-transparent bg-muted/50 hover:bg-muted'
+                        }`}
+                      >
+                        <Receipt className="w-5 h-5 mx-auto mb-1" />
+                        <p className="text-xs font-bold">58 مم</p>
+                        <p className="text-[10px] text-muted-foreground">مصغر</p>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Toggle switches */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30">
+                      <div>
+                        <p className="text-sm font-medium">عرض الشعار</p>
+                        <p className="text-xs text-muted-foreground">إظهار شعار المتجر في الفاتورة</p>
+                      </div>
+                      <Switch checked={receiptShowLogo} onCheckedChange={setReceiptShowLogo} />
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30">
+                      <div>
+                        <p className="text-sm font-medium">عرض الضريبة</p>
+                        <p className="text-xs text-muted-foreground">إظهار قيمة الضريبة منفصلة</p>
+                      </div>
+                      <Switch checked={showTaxOnReceipt} onCheckedChange={setShowTaxOnReceipt} />
+                    </div>
+                  </div>
+
+                  {/* Custom texts */}
+                  <div className="space-y-2">
+                    <Label>نص رأس الفاتورة</Label>
+                    <Textarea
+                      value={receiptHeader}
+                      onChange={e => setReceiptHeader(e.target.value)}
+                      placeholder="مثال: نهاركم سعيد! 🌸"
+                      className="min-h-[60px] resize-none"
+                      maxLength={100}
+                    />
+                    <p className="text-[10px] text-muted-foreground">{(receiptHeader || '').length}/100</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>نص ذيل الفاتورة</Label>
+                    <Textarea
+                      value={receiptFooter}
+                      onChange={e => setReceiptFooter(e.target.value)}
+                      placeholder="مثال: شكراً لزيارتكم، نرجو لكم يوماً سعيداً!"
+                      className="min-h-[60px] resize-none"
+                      maxLength={200}
+                    />
+                    <p className="text-[10px] text-muted-foreground">{(receiptFooter || '').length}/200</p>
+                  </div>
+                </CardContent>
+                <CardFooter className="border-t bg-muted/30 px-6 py-3">
+                  <Button onClick={handleSaveReceipt} disabled={updateMutation.isPending} className="bg-gradient-to-l from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md">
+                    {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4 ml-1" />}
+                    حفظ إعدادات الفاتورة
+                  </Button>
+                </CardFooter>
+              </Card>
+            )}
+
+            {/* ─── GENERAL TAB ─── */}
+            {activeTab === 'general' && (
+              <Card className="border-0 shadow-sm overflow-hidden">
+                <CardHeader className="bg-gradient-to-l from-blue-50 to-white pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+                      <Globe className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">إعدادات عامة</CardTitle>
+                      <CardDescription className="text-xs">العملة، الضرائب والمعاملات المالية</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6 space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>نسبة الضريبة (%)</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          value={taxRate}
+                          onChange={e => setTaxRate(e.target.value)}
+                          dir="ltr"
+                          className="h-10 text-left pl-8"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                        />
+                        <Percent className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>رمز العملة</Label>
+                      <div className="relative">
+                        <Input
+                          value={currencySymbol}
+                          onChange={e => setCurrencySymbol(e.target.value)}
+                          className="h-10"
+                          maxLength={5}
+                          placeholder="ر.س"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>كود العملة (ISO)</Label>
+                      <Select value={currency} onValueChange={setCurrency}>
+                        <SelectTrigger className="h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="SAR">ريال سعودي (SAR)</SelectItem>
+                          <SelectItem value="AED">درهم إماراتي (AED)</SelectItem>
+                          <SelectItem value="QAR">ريال قطري (QAR)</SelectItem>
+                          <SelectItem value="KWD">دينار كويتي (KWD)</SelectItem>
+                          <SelectItem value="BHD">دينار بحريني (BHD)</SelectItem>
+                          <SelectItem value="OMR">ريال عماني (OMR)</SelectItem>
+                          <SelectItem value="EGP">جنيه مصري (EGP)</SelectItem>
+                          <SelectItem value="USD">دولار أمريكي (USD)</SelectItem>
+                          <SelectItem value="EUR">يورو (EUR)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>الرقم الضريبي</Label>
+                      <Input
+                        value={taxNumber}
+                        onChange={e => setTaxNumber(e.target.value)}
+                        placeholder="300000000000003"
+                        dir="ltr"
+                        className="h-10 text-left"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Info box */}
+                  <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
+                    <div className="flex gap-3">
+                      <Info className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-700">معلومة</p>
+                        <p className="text-xs text-blue-600 mt-1">تغيير نسبة الضريبة سيتم تطبيقه على الفواتير الجديدة فقط. الفواتير السابقة لن تتأثر.</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="border-t bg-muted/30 px-6 py-3">
+                  <Button onClick={handleSaveStore} disabled={updateMutation.isPending} className="bg-gradient-to-l from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-md">
+                    {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4 ml-1" />}
+                    حفظ الإعدادات العامة
+                  </Button>
+                </CardFooter>
+              </Card>
+            )}
+          </div>
+
+          {/* Receipt Live Preview */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-4">
+              <Card className="border-0 shadow-sm overflow-hidden">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm">معاينة الفاتورة مباشرة</CardTitle>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-red-400" />
+                      <div className="w-2 h-2 rounded-full bg-yellow-400" />
+                      <div className="w-2 h-2 rounded-full bg-green-400" />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="bg-gray-50/50 p-6 flex items-start justify-center min-h-[400px]">
+                  <motion.div
+                    key={`${activeTab}-${receiptWidth}-${receiptShowLogo}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <ReceiptPreview settings={previewSettings} primaryColor={primaryColor} />
+                  </motion.div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      )}
+    </AnimatedPage>
+  );
+}
+
+// ═══════════════════════════════════════════════════════
 // MAIN APPLICATION
 // ═══════════════════════════════════════════════════════
 function AppContent() {
@@ -1834,6 +2580,7 @@ function AppContent() {
     ...(isManager(user?.role) ? [{ view: 'users' as View, label: 'المستخدمين', icon: Users }] : []),
     { view: 'reports' as View, label: 'التقارير', icon: BarChart3 },
     ...(isManager(user?.role) ? [{ view: 'audit-logs' as View, label: 'سجل العمليات', icon: Search }] : []),
+    ...(isOwner(user?.role) ? [{ view: 'settings' as View, label: 'الإعدادات', icon: Settings }] : []),
   ];
 
   const renderView = () => {
@@ -1847,6 +2594,7 @@ function AppContent() {
       case 'users': return <UsersView />;
       case 'reports': return <ReportsView />;
       case 'audit-logs': return <AuditLogsView />;
+      case 'settings': return <SettingsView />;
       default: return <POSView />;
     }
   };

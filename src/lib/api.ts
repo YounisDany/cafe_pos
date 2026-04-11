@@ -86,4 +86,24 @@ export const api = {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     return request<any>(`/api/audit-logs${qs}`);
   },
+
+  // Settings
+  getSettings: () => request<any>('/api/settings'),
+  updateSettings: (data: any) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  uploadLogo: (file: File) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('pos_token') : null;
+    return fetch('/api/upload', {
+      method: 'POST',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      body: formData,
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      return res.json();
+    });
+  },
 };

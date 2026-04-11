@@ -22,6 +22,21 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Theme settings
+  primaryColor String   @default("#d97706")
+  secondaryColor String @default("#78350f")
+  accentColor  String   @default("#fbbf24")
+
+  // Receipt settings
+  receiptHeader  String? // custom header text
+  receiptFooter  String? // custom footer text
+  receiptShowLogo Boolean @default(true)
+  taxNumber      String? // VAT registration number
+  currencySymbol String  @default("ر.س")
+  receiptWidth   String  @default("80") // 58 or 80mm
+  showTaxOnReceipt Boolean @default(true)
+  showDiscountOnReceipt Boolean @default(true)
+
   branches    Branch[]
   users       User[]
   categories  Category[]
