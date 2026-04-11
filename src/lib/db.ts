@@ -7,9 +7,10 @@ const globalForPrisma = globalThis as unknown as {
 function createPrismaClient(): PrismaClient {
   const dbUrl = process.env.DATABASE_URL;
 
-  // Production: connect to Turso via libsql adapter
+  // Connect to Turso via libsql adapter (production)
   if (dbUrl?.startsWith('libsql://')) {
-    if (!process.env.DATABASE_AUTH_TOKEN) {
+    const authToken = process.env.DATABASE_AUTH_TOKEN;
+    if (!authToken) {
       throw new Error('DATABASE_AUTH_TOKEN is not set in environment variables.');
     }
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -19,11 +20,10 @@ function createPrismaClient(): PrismaClient {
 
     const libsql = createClient({
       url: dbUrl,
-      authToken: process.env.DATABASE_AUTH_TOKEN,
+      authToken,
     });
 
     const adapter = new PrismaLibSQL(libsql);
-    // datasourceUrl overrides schema URL validation (sqlite provider rejects libsql://)
     return new PrismaClient({
       adapter,
       datasourceUrl: 'file:./dummy.db',
@@ -32,15 +32,29 @@ function createPrismaClient(): PrismaClient {
 
   // Local development: use SQLite file
   if (!dbUrl && process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'DATABASE_URL is not set. Add it in Vercel → Settings → Environment Variables.\n' +
-      'Example: libsql://your-db.turso.io'
-    );
+    throw new Error('DATABASE_URL is not set. Add it in Vercel → Settings → Environment Variables.');
   }
 
   return new PrismaClient();
 }
 
-export const db = globalForPrisma.prisma ?? createPrismaClient();
+// Lazy singleton: only create on first actual database call, not at import time
+let _db: PrismaClient | undefined;
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db;
+export function getDb(): PrismaClient {
+  if (!_db) {
+    _db = createPrismaClient();
+  }
+  // Persist in global for hot-reload in dev
+  if (process.env.NODE_ENV !== 'production' && !globalForPrisma.prisma) {
+    globalForPrisma.prisma = _db;
+  }
+  return _db;
+}
+
+// For backward compatibility
+export const db = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    return (getDb() as any)[prop];
+  },
+});
