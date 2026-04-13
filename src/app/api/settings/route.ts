@@ -42,6 +42,8 @@ export async function PUT(request: NextRequest) {
       receiptHeader, receiptFooter, receiptShowLogo,
       taxNumber, currencySymbol, receiptWidth,
       showTaxOnReceipt, showDiscountOnReceipt,
+      showQrOnReceipt, receiptFontSize, receiptAlign, receiptPaper,
+      receiptTemplate, receiptTemplates,
     } = body;
 
     // Validate colors
@@ -75,6 +77,12 @@ export async function PUT(request: NextRequest) {
     if (receiptWidth !== undefined) updateData.receiptWidth = receiptWidth;
     if (showTaxOnReceipt !== undefined) updateData.showTaxOnReceipt = showTaxOnReceipt;
     if (showDiscountOnReceipt !== undefined) updateData.showDiscountOnReceipt = showDiscountOnReceipt;
+    if (showQrOnReceipt !== undefined) updateData.showQrOnReceipt = showQrOnReceipt;
+    if (receiptFontSize !== undefined) updateData.receiptFontSize = parseInt(String(receiptFontSize), 10);
+    if (receiptAlign !== undefined) updateData.receiptAlign = receiptAlign;
+    if (receiptPaper !== undefined) updateData.receiptPaper = receiptPaper;
+    if (receiptTemplate !== undefined) updateData.receiptTemplate = receiptTemplate;
+    if (receiptTemplates !== undefined) updateData.receiptTemplates = receiptTemplates;
 
     const company = await db.company.update({
       where: { id: auth.user.companyId },
