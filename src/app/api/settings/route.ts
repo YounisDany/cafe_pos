@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession, createAuditLog } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
+
+async function getCompanyTableColumns() {
+  const rows = await db.$queryRaw<Array<{ column_name: string }>>(Prisma.sql`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'Company'
+  `);
+  return new Set(rows.map((r) => r.column_name));
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,6 +52,8 @@ export async function PUT(request: NextRequest) {
       receiptHeader, receiptFooter, receiptShowLogo,
       taxNumber, currencySymbol, receiptWidth,
       showTaxOnReceipt, showDiscountOnReceipt,
+      showQrOnReceipt, receiptFontSize, receiptAlign, receiptPaper,
+      receiptTemplate, receiptTemplates,
     } = body;
 
     // Validate colors
@@ -75,11 +87,44 @@ export async function PUT(request: NextRequest) {
     if (receiptWidth !== undefined) updateData.receiptWidth = receiptWidth;
     if (showTaxOnReceipt !== undefined) updateData.showTaxOnReceipt = showTaxOnReceipt;
     if (showDiscountOnReceipt !== undefined) updateData.showDiscountOnReceipt = showDiscountOnReceipt;
+    if (showQrOnReceipt !== undefined) updateData.showQrOnReceipt = showQrOnReceipt;
+    if (receiptFontSize !== undefined) updateData.receiptFontSize = parseInt(String(receiptFontSize), 10);
+    if (receiptAlign !== undefined) updateData.receiptAlign = receiptAlign;
+    if (receiptPaper !== undefined) updateData.receiptPaper = receiptPaper;
+    if (receiptTemplate !== undefined) updateData.receiptTemplate = receiptTemplate;
+    if (receiptTemplates !== undefined) updateData.receiptTemplates = receiptTemplates;
 
-    const company = await db.company.update({
-      where: { id: auth.user.companyId },
-      data: updateData,
-    });
+    const updateDataDb = { ...updateData };
+    const dynamicReceiptFields = ['showQrOnReceipt', 'receiptFontSize', 'receiptAlign', 'receiptPaper', 'receiptTemplate', 'receiptTemplates'];
+    const tableColumns = await getCompanyTableColumns();
+    for (const field of dynamicReceiptFields) {
+      if (!tableColumns.has(field) && field in updateDataDb) {
+        delete updateDataDb[field];
+      }
+    }
+
+    let company;
+    const safeData: Record<string, unknown> = { ...updateDataDb };
+    for (let i = 0; i < 6; i++) {
+      try {
+        company = await db.company.update({
+          where: { id: auth.user.companyId },
+          data: safeData,
+        });
+        break;
+      } catch (error: any) {
+        const msg = String(error?.message || '');
+        const match = msg.match(/Unknown argument `([^`]+)`/);
+        if (!match) throw error;
+        const unknownField = match[1];
+        if (!(unknownField in safeData)) throw error;
+        delete safeData[unknownField];
+      }
+    }
+
+    if (!company) {
+      return NextResponse.json({ error: 'Unable to update settings with current schema' }, { status: 500 });
+    }
 
     await createAuditLog({
       action: 'update',
@@ -87,7 +132,7 @@ export async function PUT(request: NextRequest) {
       entityId: auth.user.companyId,
       userId: auth.user.id,
       companyId: auth.user.companyId,
-      details: JSON.stringify({ updatedFields: Object.keys(updateData) }),
+      details: JSON.stringify({ updatedFields: Object.keys(safeData) }),
     });
 
     return NextResponse.json(company);

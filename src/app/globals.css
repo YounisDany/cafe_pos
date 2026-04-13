@@ -131,10 +131,24 @@
 }
 
 /* Print styles for receipt */
+@page {
+  size: 80mm auto;
+  margin: 0;
+}
+
+@page a4 {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
 @media print {
-  body * {
+  html, body {
+    background: #fff !important;
+  }
+  body *:not(.invoice-print-root):not(.invoice-print-root *) {
     visibility: hidden;
   }
+  .invoice-print-root,
   .print\:block, .print\:block * {
     visibility: visible;
   }
@@ -142,6 +156,36 @@
     position: absolute;
     left: 0;
     top: 0;
+    width: 100%;
+  }
+  .receipt-print {
+    margin: 0 auto;
+    break-inside: avoid;
+    overflow: hidden;
+  }
+  .receipt-paper-80 {
     width: 80mm;
+    max-width: 80mm;
+  }
+  .receipt-paper-58 {
+    width: 58mm;
+    max-width: 58mm;
+  }
+  .receipt-paper-a4 {
+    width: 190mm;
+    max-width: 190mm;
+    page: a4;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+  .template-formal {
+    border: 1px solid #222;
+    padding: 4mm !important;
+  }
+  .template-modern {
+    border-radius: 2mm;
+    border: 1px solid #e5e7eb;
+    padding: 3mm !important;
   }
 }
