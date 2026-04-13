@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getSession, createAuditLog } from '@/lib/auth';
+import { Prisma } from '@prisma/client';
+
+async function getCompanyTableColumns() {
+  const rows = await db.$queryRaw<Array<{ column_name: string }>>(Prisma.sql`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'Company'
+  `);
+  return new Set(rows.map((r) => r.column_name));
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,6 +52,8 @@ export async function PUT(request: NextRequest) {
       receiptHeader, receiptFooter, receiptShowLogo,
       taxNumber, currencySymbol, receiptWidth,
       showTaxOnReceipt, showDiscountOnReceipt,
+      showQrOnReceipt, receiptFontSize, receiptAlign, receiptPaper,
+      receiptTemplate, receiptTemplates,
     } = body;
 
     // Validate colors
@@ -75,10 +87,25 @@ export async function PUT(request: NextRequest) {
     if (receiptWidth !== undefined) updateData.receiptWidth = receiptWidth;
     if (showTaxOnReceipt !== undefined) updateData.showTaxOnReceipt = showTaxOnReceipt;
     if (showDiscountOnReceipt !== undefined) updateData.showDiscountOnReceipt = showDiscountOnReceipt;
+    if (showQrOnReceipt !== undefined) updateData.showQrOnReceipt = showQrOnReceipt;
+    if (receiptFontSize !== undefined) updateData.receiptFontSize = parseInt(String(receiptFontSize), 10);
+    if (receiptAlign !== undefined) updateData.receiptAlign = receiptAlign;
+    if (receiptPaper !== undefined) updateData.receiptPaper = receiptPaper;
+    if (receiptTemplate !== undefined) updateData.receiptTemplate = receiptTemplate;
+    if (receiptTemplates !== undefined) updateData.receiptTemplates = receiptTemplates;
+
+    const updateDataDb = { ...updateData };
+    const dynamicReceiptFields = ['showQrOnReceipt', 'receiptFontSize', 'receiptAlign', 'receiptPaper', 'receiptTemplate', 'receiptTemplates'];
+    const tableColumns = await getCompanyTableColumns();
+    for (const field of dynamicReceiptFields) {
+      if (!tableColumns.has(field) && field in updateDataDb) {
+        delete updateDataDb[field];
+      }
+    }
 
     const company = await db.company.update({
       where: { id: auth.user.companyId },
-      data: updateData,
+      data: updateDataDb,
     });
 
     await createAuditLog({
@@ -87,7 +114,7 @@ export async function PUT(request: NextRequest) {
       entityId: auth.user.companyId,
       userId: auth.user.id,
       companyId: auth.user.companyId,
-      details: JSON.stringify({ updatedFields: Object.keys(updateData) }),
+      details: JSON.stringify({ updatedFields: Object.keys(updateDataDb) }),
     });
 
     return NextResponse.json(company);

@@ -37,6 +37,12 @@ model Company {
   receiptWidth   String  @default("80") // 58 or 80mm
   showTaxOnReceipt Boolean @default(true)
   showDiscountOnReceipt Boolean @default(true)
+  showQrOnReceipt Boolean @default(false)
+  receiptFontSize Int @default(11)
+  receiptAlign    String @default("center") // left, center, right
+  receiptPaper    String @default("thermal-80") // thermal-58, thermal-80, a4
+  receiptTemplate String @default("simple") // simple, formal, modern
+  receiptTemplates Json?
 
   branches    Branch[]
   users       User[]

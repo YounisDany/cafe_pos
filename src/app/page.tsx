@@ -16,7 +16,8 @@ import {
   RefreshCw, CheckCircle, XCircle, AlertCircle, Loader2,
   ArrowUpDown, Filter, CalendarDays, Shield, Menu, UserCircle,
   Home, Store, ChevronLeft, Phone, MapPin, Hash, Percent,
-  Sparkles, MousePointerClick, Keyboard, Settings, Upload, Palette, FileSignature, Globe, Info
+  Sparkles, MousePointerClick, Keyboard, Settings, Upload, Palette, FileSignature, Globe, Info,
+  QrCode, AlignLeft, AlignCenter, AlignRight, LayoutTemplate
 } from 'lucide-react';
 
 // shadcn/ui imports
@@ -436,22 +437,35 @@ function LoginScreen() {
 function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void }) {
   const company = useAppStore(s => s.company);
   const branch = useAppStore(s => s.branch);
+  const template = company?.receiptTemplate || 'simple';
+  const align = company?.receiptAlign || 'center';
+  const fontSize = Math.max(9, Math.min(14, company?.receiptFontSize || 11));
+  const paper = company?.receiptPaper || (company?.receiptWidth === '58' ? 'thermal-58' : 'thermal-80');
+  const paperClass = paper === 'a4' ? 'receipt-paper-a4' : paper === 'thermal-58' ? 'receipt-paper-58' : 'receipt-paper-80';
+  const alignClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
+  const showTax = company?.showTaxOnReceipt !== false;
+  const showDiscount = company?.showDiscountOnReceipt !== false;
+  const showQr = company?.showQrOnReceipt === true;
+  const qrPayload = `${company?.name || 'CafePOS'}|${invoice.invoiceNo || invoice.id}|${invoice.total}|${new Date(invoice.createdAt).toISOString()}`;
 
   useEffect(() => {
     setTimeout(() => window.print(), 300);
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-white p-0 print:p-0">
+    <div className="fixed inset-0 z-[9999] bg-white p-0 print:p-0 invoice-print-root">
       <div className="hidden print:block">
-        {/* Receipt for 80mm thermal printer */}
-        <div className="w-[80mm] mx-auto p-2 font-mono text-xs" dir="rtl" style={{ fontFamily: 'monospace' }}>
-          <div className="text-center mb-2">
+        <div className={`mx-auto p-2 font-mono receipt-print ${paperClass} template-${template}`} dir="rtl" style={{ fontFamily: 'monospace', fontSize: `${fontSize}px` }}>
+          <div className={`${alignClass} mb-2`}>
+            {company?.receiptShowLogo !== false && company?.logo && (
+              <img src={company.logo} alt="logo" className="w-12 h-12 mx-auto mb-1 rounded-md object-cover" />
+            )}
             <h1 className="text-base font-bold">{company?.name || 'المقهى'}</h1>
             <p className="text-[10px]">{branch?.name || ''}</p>
             <p className="text-[10px]">{branch?.address || ''}</p>
             <p className="text-[10px]">هاتف: {branch?.phone || ''}</p>
           </div>
+          {company?.receiptHeader && <p className={`text-[10px] italic mb-2 ${alignClass}`}>{company.receiptHeader}</p>}
           <div className="border-t border-dashed border-gray-400 my-2" />
           <div className="flex justify-between text-[10px]">
             <span>فاتورة #{invoice.invoiceNo || invoice.id?.slice(-6)}</span>
@@ -474,13 +488,13 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           <div className="border-t border-dashed border-gray-400 my-2" />
           <div className="space-y-1 text-[11px]">
             <div className="flex justify-between"><span>المجموع الفرعي</span><span>{fmt(invoice.subtotal)}</span></div>
-            {invoice.discount > 0 && (
+            {showDiscount && invoice.discount > 0 && (
               <div className="flex justify-between text-red-600"><span>الخصم</span><span>-{fmt(invoice.discount)}</span></div>
             )}
-            <div className="flex justify-between"><span>الضريبة {(invoice.taxRate || 15)}%</span><span>{fmt(invoice.tax || invoice.taxAmount || 0)}</span></div>
+            {showTax && <div className="flex justify-between"><span>الضريبة {(invoice.taxRate || 15)}%</span><span>{fmt(invoice.tax || invoice.taxAmount || 0)}</span></div>}
             <div className="border-t border-dashed border-gray-400 my-1" />
             <div className="flex justify-between text-sm font-bold text-base">
-              <span>الإجمالي</span><span>{fmt(invoice.total)} ر.س</span>
+              <span>الإجمالي</span><span>{fmt(invoice.total)} {company?.currencySymbol || 'ر.س'}</span>
             </div>
             <div className="flex justify-between text-[10px]">
               <span>طريقة الدفع</span>
@@ -495,7 +509,16 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           </div>
           <div className="border-t border-dashed border-gray-400 my-2" />
           <div className="text-center text-[10px] mt-2">
-            <p>شكراً لزيارتكم!</p>
+            {showQr && (
+              <div className="inline-block bg-white border rounded p-1 mb-1">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(qrPayload)}`}
+                  alt="qr"
+                  className="w-[72px] h-[72px]"
+                />
+              </div>
+            )}
+            <p>{company?.receiptFooter || 'شكراً لزيارتكم!'}</p>
             <p>نتمنى لكم يوماً سعيداً ☕</p>
           </div>
         </div>
@@ -2346,11 +2369,14 @@ function ReceiptPreview({ settings, primaryColor }: { settings: any; primaryColo
   const sub = items.reduce((s: number, i: any) => s + i.qty * i.price, 0);
   const tax = Math.round(sub * (settings?.taxRate || 15) / 100 * 100) / 100;
   const total = sub + tax;
+  const alignClass = settings?.receiptAlign === 'left' ? 'text-left' : settings?.receiptAlign === 'right' ? 'text-right' : 'text-center';
+  const paperWidth = settings?.receiptPaper === 'a4' ? '100%' : settings?.receiptPaper === 'thermal-58' ? '220px' : '300px';
+  const templateClass = settings?.receiptTemplate === 'modern' ? 'border border-slate-200 rounded-2xl' : settings?.receiptTemplate === 'formal' ? 'border border-gray-300' : '';
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-4 mx-auto" style={{ maxWidth: `${settings?.receiptWidth === '58' ? 220 : 300}px`, fontFamily: 'monospace', fontSize: '11px', lineHeight: '1.5' }}>
+    <div className={`bg-white rounded-xl shadow-lg p-4 mx-auto ${templateClass}`} style={{ maxWidth: paperWidth, fontFamily: 'monospace', fontSize: `${settings?.receiptFontSize || 11}px`, lineHeight: '1.5' }}>
       {/* Header */}
-      <div className="text-center mb-3">
+      <div className={`${alignClass} mb-3`}>
         {settings?.receiptShowLogo !== false && settings?.logo && (
           <div className="w-12 h-12 mx-auto mb-2 rounded-lg overflow-hidden bg-gray-100">
             <img src={settings.logo} alt="logo" className="w-full h-full object-cover" />
@@ -2405,8 +2431,13 @@ function ReceiptPreview({ settings, primaryColor }: { settings: any; primaryColo
       </div>
 
       {/* Footer */}
-      <div className="text-center mt-3 pt-2 border-t border-dashed border-gray-200">
+      <div className={`${alignClass} mt-3 pt-2 border-t border-dashed border-gray-200`}>
         <div className="text-[10px] text-gray-400">تم الدفع: نقداً</div>
+        {settings?.showQrOnReceipt && (
+          <div className="inline-flex mt-2 p-1 bg-white border rounded">
+            <QrCode className="w-10 h-10 text-gray-700" />
+          </div>
+        )}
         {settings?.receiptFooter && (
           <div className="text-[10px] italic text-gray-500 mt-1">{settings.receiptFooter}</div>
         )}
@@ -2451,6 +2482,12 @@ function SettingsView() {
   const [receiptWidth, setReceiptWidth] = useState('80');
   const [showTaxOnReceipt, setShowTaxOnReceipt] = useState(true);
   const [showDiscountOnReceipt, setShowDiscountOnReceipt] = useState(true);
+  const [showQrOnReceipt, setShowQrOnReceipt] = useState(false);
+  const [receiptFontSize, setReceiptFontSize] = useState(11);
+  const [receiptAlign, setReceiptAlign] = useState<'left' | 'center' | 'right'>('center');
+  const [receiptPaper, setReceiptPaper] = useState<'thermal-58' | 'thermal-80' | 'a4'>('thermal-80');
+  const [receiptTemplate, setReceiptTemplate] = useState<'simple' | 'formal' | 'modern'>('simple');
+  const [receiptTemplates, setReceiptTemplates] = useState<any[]>([]);
 
   // Upload state
   const [uploading, setUploading] = useState(false);
@@ -2476,6 +2513,12 @@ function SettingsView() {
       setReceiptWidth(settings.receiptWidth || '80');
       setShowTaxOnReceipt(settings.showTaxOnReceipt !== false);
       setShowDiscountOnReceipt(settings.showDiscountOnReceipt !== false);
+      setShowQrOnReceipt(settings.showQrOnReceipt === true);
+      setReceiptFontSize(settings.receiptFontSize || 11);
+      setReceiptAlign((settings.receiptAlign || 'center') as 'left' | 'center' | 'right');
+      setReceiptPaper((settings.receiptPaper || 'thermal-80') as 'thermal-58' | 'thermal-80' | 'a4');
+      setReceiptTemplate((settings.receiptTemplate || 'simple') as 'simple' | 'formal' | 'modern');
+      setReceiptTemplates(Array.isArray(settings.receiptTemplates) ? settings.receiptTemplates : []);
     }
   }, [settings]);
 
@@ -2537,6 +2580,12 @@ function SettingsView() {
       receiptWidth,
       showTaxOnReceipt,
       showDiscountOnReceipt,
+      showQrOnReceipt,
+      receiptFontSize,
+      receiptAlign,
+      receiptPaper,
+      receiptTemplate,
+      receiptTemplates,
     });
   };
 
@@ -2578,6 +2627,11 @@ function SettingsView() {
     receiptWidth,
     showTaxOnReceipt,
     showDiscountOnReceipt,
+    showQrOnReceipt,
+    receiptFontSize,
+    receiptAlign,
+    receiptPaper,
+    receiptTemplate,
   };
 
   const presetThemes = [
@@ -2588,6 +2642,21 @@ function SettingsView() {
     { name: 'وردي', primary: '#db2777', secondary: '#500724', accent: '#f472b6', bg: 'bg-pink-100' },
     { name: 'أحمر ناري', primary: '#dc2626', secondary: '#450a0a', accent: '#f87171', bg: 'bg-red-100' },
   ];
+  const templatePresets = [
+    { id: 'simple', name: 'بسيط' },
+    { id: 'formal', name: 'رسمي' },
+    { id: 'modern', name: 'حديث' },
+  ];
+
+  const saveCurrentTemplate = () => {
+    const key = `tpl-${Date.now()}`;
+    const next = [
+      ...receiptTemplates,
+      { key, name: `قالب ${receiptTemplates.length + 1}`, receiptTemplate, receiptPaper, receiptAlign, receiptFontSize, showTaxOnReceipt, showDiscountOnReceipt, showQrOnReceipt, receiptShowLogo, receiptHeader, receiptFooter },
+    ];
+    setReceiptTemplates(next);
+    toast.success('تم حفظ القالب');
+  };
 
   if (user?.role !== 'owner') {
     return (
@@ -2910,6 +2979,29 @@ function SettingsView() {
                     </div>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">حجم الورق للطباعة</Label>
+                    <Select value={receiptPaper} onValueChange={(v: any) => setReceiptPaper(v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="thermal-80">حراري 80mm</SelectItem>
+                        <SelectItem value="thermal-58">حراري 58mm</SelectItem>
+                        <SelectItem value="a4">A4</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">نمط الفاتورة</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {templatePresets.map((tpl) => (
+                        <Button key={tpl.id} type="button" variant={receiptTemplate === tpl.id ? 'default' : 'outline'} onClick={() => setReceiptTemplate(tpl.id as any)} className="h-9">
+                          <LayoutTemplate className="w-4 h-4 ml-1" /> {tpl.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Toggle switches */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30">
@@ -2925,6 +3017,35 @@ function SettingsView() {
                         <p className="text-xs text-muted-foreground">إظهار قيمة الضريبة منفصلة</p>
                       </div>
                       <Switch checked={showTaxOnReceipt} onCheckedChange={setShowTaxOnReceipt} />
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30">
+                      <div>
+                        <p className="text-sm font-medium">عرض الخصم</p>
+                        <p className="text-xs text-muted-foreground">إظهار سطر الخصم عند وجود خصومات</p>
+                      </div>
+                      <Switch checked={showDiscountOnReceipt} onCheckedChange={setShowDiscountOnReceipt} />
+                    </div>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30">
+                      <div>
+                        <p className="text-sm font-medium">عرض QR Code</p>
+                        <p className="text-xs text-muted-foreground">إظهار كود QR أسفل الفاتورة</p>
+                      </div>
+                      <Switch checked={showQrOnReceipt} onCheckedChange={setShowQrOnReceipt} />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>حجم الخط</Label>
+                      <Input type="number" value={receiptFontSize} onChange={e => setReceiptFontSize(Number(e.target.value) || 11)} min={9} max={14} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>محاذاة المحتوى</Label>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button type="button" variant={receiptAlign === 'left' ? 'default' : 'outline'} onClick={() => setReceiptAlign('left')}><AlignLeft className="w-4 h-4" /></Button>
+                        <Button type="button" variant={receiptAlign === 'center' ? 'default' : 'outline'} onClick={() => setReceiptAlign('center')}><AlignCenter className="w-4 h-4" /></Button>
+                        <Button type="button" variant={receiptAlign === 'right' ? 'default' : 'outline'} onClick={() => setReceiptAlign('right')}><AlignRight className="w-4 h-4" /></Button>
+                      </div>
                     </div>
                   </div>
 
@@ -2952,12 +3073,43 @@ function SettingsView() {
                     />
                     <p className="text-[10px] text-muted-foreground">{(receiptFooter || '').length}/200</p>
                   </div>
+
+                  {receiptTemplates.length > 0 && (
+                    <div className="space-y-2">
+                      <Label>القوالب المحفوظة</Label>
+                      <div className="space-y-2">
+                        {receiptTemplates.map((tpl: any) => (
+                          <div key={tpl.key} className="flex items-center justify-between rounded-lg border p-2 text-xs">
+                            <span>{tpl.name}</span>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => {
+                              setReceiptTemplate(tpl.receiptTemplate || 'simple');
+                              setReceiptPaper(tpl.receiptPaper || 'thermal-80');
+                              setReceiptAlign(tpl.receiptAlign || 'center');
+                              setReceiptFontSize(tpl.receiptFontSize || 11);
+                              setShowTaxOnReceipt(tpl.showTaxOnReceipt !== false);
+                              setShowDiscountOnReceipt(tpl.showDiscountOnReceipt !== false);
+                              setShowQrOnReceipt(tpl.showQrOnReceipt === true);
+                              setReceiptShowLogo(tpl.receiptShowLogo !== false);
+                              setReceiptHeader(tpl.receiptHeader || '');
+                              setReceiptFooter(tpl.receiptFooter || '');
+                            }}>تطبيق</Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
                 <CardFooter className="border-t bg-muted/30 px-6 py-3">
+                  <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" onClick={saveCurrentTemplate}>
+                    <LayoutTemplate className="w-4 h-4 ml-1" />
+                    حفظ قالب جديد
+                  </Button>
                   <Button onClick={handleSaveReceipt} disabled={updateMutation.isPending} className="bg-gradient-to-l from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white shadow-md">
                     {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4 ml-1" />}
                     حفظ إعدادات الفاتورة
                   </Button>
+                  </div>
                 </CardFooter>
               </Card>
             )}
@@ -3097,7 +3249,7 @@ function SettingsView() {
                 </CardHeader>
                 <CardContent className="bg-gray-50/50 p-6 flex items-start justify-center min-h-[400px]">
                   <motion.div
-                    key={`${activeTab}-${receiptWidth}-${receiptShowLogo}`}
+                    key={`${activeTab}-${receiptWidth}-${receiptShowLogo}-${receiptTemplate}-${receiptPaper}-${receiptAlign}-${receiptFontSize}-${showQrOnReceipt}`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
