@@ -434,73 +434,159 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
   const branch = useAppStore(s => s.branch);
 
   useEffect(() => {
-    setTimeout(() => window.print(), 300);
+    setTimeout(() => window.print(), 500);
   }, []);
+
+  const fontSize = company?.receiptFontSize || '12px';
 
   return (
     <div className="fixed inset-0 z-[9999] bg-white p-0 print:p-0">
-      <div className="hidden print:block">
-        {/* Receipt for 80mm thermal printer */}
-        <div className="w-[80mm] mx-auto p-2 font-mono text-xs" dir="rtl" style={{ fontFamily: 'monospace' }}>
-          <div className="text-center mb-2">
-            <h1 className="text-base font-bold">{company?.name || 'المقهى'}</h1>
-            <p className="text-[10px]">{branch?.name || ''}</p>
-            <p className="text-[10px]">{branch?.address || ''}</p>
-            <p className="text-[10px]">هاتف: {branch?.phone || ''}</p>
+      <style>{`
+        @media print {
+          @page { margin: 0; }
+          body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+          .receipt-container { 
+            width: 80mm !important; 
+            margin: 0 auto;
+            page-break-inside: avoid;
+            overflow: hidden;
+            font-size: ${fontSize};
+          }
+        }
+      `}</style>
+      <div className="hidden print:block w-[80mm] mx-auto receipt-container p-2 font-sans text-black" dir="rtl" style={{ fontSize, lineHeight: '1.4' }}>
+        {/* Header */}
+        <div className="text-center mb-3">
+          {company?.receiptShowLogo !== false && company?.logo && (
+             <img src={company.logo} alt="logo" className="max-w-[70px] mx-auto mb-2 mix-blend-multiply grayscale" />
+          )}
+          <h1 className="text-xl font-bold font-sans">{company?.name || 'المقهى'}</h1>
+          <p className="font-bold">{branch?.name || ''}</p>
+          <p>{branch?.address || ''}</p>
+          <p>هاتف: {branch?.phone || ''}</p>
+          {company?.taxNumber && <p>الرقم الضريبي: {company.taxNumber}</p>}
+        </div>
+        
+        {company?.receiptHeader && (
+          <div className="text-center italic mb-2 pb-2 border-b-2 border-dashed border-black">
+            {company.receiptHeader}
           </div>
-          <div className="border-t border-dashed border-gray-400 my-2" />
-          <div className="flex justify-between text-[10px]">
-            <span>فاتورة #{invoice.invoiceNo || invoice.id?.slice(-6)}</span>
-            <span>{new Date(invoice.createdAt).toLocaleString('ar-SA')}</span>
+        )}
+
+        <div className="border-t-2 border-dashed border-black my-2" />
+        
+        <div className="flex justify-between pb-1">
+          <span>رقم الفاتورة:</span>
+          <span>#{invoice.invoiceNo || invoice.id?.slice(-6)}</span>
+        </div>
+        <div className="flex justify-between pb-1">
+          <span>التاريخ:</span>
+          <span dir="ltr">{new Date(invoice.createdAt).toLocaleString('ar-SA')}</span>
+        </div>
+        <div className="flex justify-between pb-1">
+          <span>الكاشير:</span>
+          <span>{invoice.user?.name || invoice.cashierName || '-'}</span>
+        </div>
+        
+        <div className="border-t-2 border-black border-dashed my-2" />
+        
+        {/* Products Table */}
+        <table className="w-full text-right" style={{ tableLayout: 'fixed' }}>
+          <thead>
+            <tr className="border-b-2 border-black border-dashed">
+              <th className="w-[45%] font-bold pb-2 pt-1 text-right whitespace-nowrap">اسم الصنف</th>
+              <th className="w-[15%] font-bold pb-2 pt-1 text-center whitespace-nowrap">الكمية</th>
+              <th className="w-[20%] font-bold pb-2 pt-1 text-left whitespace-nowrap">السعر</th>
+              <th className="w-[20%] font-bold pb-2 pt-1 text-left whitespace-nowrap">الإجمالي</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(invoice.items || []).map((item: any, i: number) => (
+              <tr key={i} className="align-top">
+                <td className="pt-2 break-words leading-tight pl-1">{item.name}</td>
+                <td className="pt-2 text-center">{item.quantity}</td>
+                <td className="pt-2 text-left pr-1 whitespace-nowrap">{fmt(item.price)}</td>
+                <td className="pt-2 text-left font-bold whitespace-nowrap">{fmt(item.price * item.quantity)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div className="border-t-2 border-black border-dashed my-2" />
+        
+        {/* Summary */}
+        <div className="space-y-1 mt-2">
+          <div className="flex justify-between font-semibold"><span>المجموع الفرعي:</span><span>{fmt(invoice.subtotal)}</span></div>
+          {invoice.discount > 0 && (
+            <div className="flex justify-between text-red-600 font-semibold"><span>الخصم:</span><span>-{fmt(invoice.discount)}</span></div>
+          )}
+          {company?.showTaxOnReceipt !== false && (
+            <div className="flex justify-between"><span>الضريبة ({(company?.taxRate || 15)}%):</span><span>{fmt(invoice.taxAmount || invoice.tax || 0)}</span></div>
+          )}
+          
+          <div className="border-t-2 border-black my-2" />
+          
+          <div className="flex justify-between text-lg font-bold items-center bg-gray-100 p-1 rounded-sm">
+            <span>الإجمالي:</span><span>{fmt(invoice.total)} {company?.currencySymbol || 'ر.س'}</span>
           </div>
-          <div className="text-[10px] mb-1">الكاشير: {invoice.user?.name || invoice.cashierName || '-'}</div>
-          <div className="border-t border-dashed border-gray-400 my-2" />
-          {(invoice.items || []).map((item: any, i: number) => (
-            <div key={i} className="mb-1">
-              <div className="flex justify-between text-[11px] font-bold">
-                <span>{item.name}</span>
-                <span>{fmt(item.price * item.quantity)}</span>
+          
+          <div className="border-t-2 border-black border-dashed my-2" />
+
+          <div className="flex justify-between mt-2 font-semibold">
+            <span>طريقة الدفع:</span>
+            <span>{invoice.paymentMethod === 'cash' ? 'نقدي' : invoice.paymentMethod === 'card' ? 'بطاقة' : '-'}</span>
+          </div>
+          {invoice.paymentMethod === 'cash' && invoice.amountReceived > 0 && (
+            <>
+              <div className="flex justify-between"><span>المبلغ المدفوع:</span><span>{fmt(invoice.amountReceived)}</span></div>
+              <div className="flex justify-between font-bold"><span>الباقي:</span><span>{fmt(invoice.change || 0)}</span></div>
+            </>
+          )}
+        </div>
+
+        <div className="border-t-2 border-black border-dashed my-3" />
+
+        {/* Footer */}
+        <div className="text-center mt-3">
+          {company?.receiptFooter && (
+            <div className="italic font-bold mb-3">{company.receiptFooter}</div>
+          )}
+          
+          {/* Socials & QR */}
+          <div className="mt-3 flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center gap-1 font-mono text-sm" dir="ltr">
+              {company?.snapchat && <p>👻 @{company.snapchat}</p>}
+              {company?.instagram && <p>📸 @{company.instagram}</p>}
+            </div>
+            
+            {company?.showQrCode && (
+              <div className="my-2 border border-black p-1 bg-white inline-block">
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(invoice.invoiceNo || invoice.id)}`} alt="QR" className="w-[80px] h-[80px]" />
               </div>
-              <div className="flex justify-between text-[10px] text-gray-600">
-                <span>{fmt(item.price)} × {item.quantity}</span>
-                <span />
-              </div>
-            </div>
-          ))}
-          <div className="border-t border-dashed border-gray-400 my-2" />
-          <div className="space-y-1 text-[11px]">
-            <div className="flex justify-between"><span>المجموع الفرعي</span><span>{fmt(invoice.subtotal)}</span></div>
-            {invoice.discount > 0 && (
-              <div className="flex justify-between text-red-600"><span>الخصم</span><span>-{fmt(invoice.discount)}</span></div>
             )}
-            <div className="flex justify-between"><span>الضريبة {(invoice.taxRate || 15)}%</span><span>{fmt(invoice.tax || invoice.taxAmount || 0)}</span></div>
-            <div className="border-t border-dashed border-gray-400 my-1" />
-            <div className="flex justify-between text-sm font-bold text-base">
-              <span>الإجمالي</span><span>{fmt(invoice.total)} ر.س</span>
-            </div>
-            <div className="flex justify-between text-[10px]">
-              <span>طريقة الدفع</span>
-              <span>{invoice.paymentMethod === 'cash' ? 'نقدي' : invoice.paymentMethod === 'card' ? 'بطاقة' : '-'}</span>
-            </div>
-            {invoice.paymentMethod === 'cash' && invoice.amountReceived > 0 && (
-              <>
-                <div className="flex justify-between"><span>المبلغ المدفوع</span><span>{fmt(invoice.amountReceived)}</span></div>
-                <div className="flex justify-between font-bold"><span>الباقي</span><span>{fmt(invoice.change)}</span></div>
-              </>
-            )}
-          </div>
-          <div className="border-t border-dashed border-gray-400 my-2" />
-          <div className="text-center text-[10px] mt-2">
-            <p>شكراً لزيارتكم!</p>
-            <p>نتمنى لكم يوماً سعيداً ☕</p>
+            
+            <p className="mt-2 font-bold mb-4">شكراً لزيارتكم! ☕</p>
           </div>
         </div>
       </div>
-      {/* Screen-only close button */}
-      <div className="print:hidden fixed bottom-8 left-1/2 -translate-x-1/2">
-        <Button onClick={onClose} size="lg" className="bg-amber-600 hover:bg-amber-700">
-          <X className="w-4 h-4 ml-2" /> إغلاق
-        </Button>
+      
+      {/* Screen-only overlay actions */}
+      <div className="print:hidden fixed top-0 left-0 right-0 bottom-0 bg-black/60 flex items-center justify-center">
+        <div className="bg-white p-6 rounded-2xl shadow-xl text-center space-y-4 max-w-sm w-full mx-4">
+          <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto text-emerald-600 mb-2">
+            <Printer className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold">الطباعة الحرارية</h2>
+          <p className="text-muted-foreground text-sm">جاري تحضير الفاتورة للطباعة 80 مم...</p>
+          <div className="flex justify-center gap-2 pt-4">
+             <Button onClick={() => window.print()} className="bg-emerald-600 hover:bg-emerald-700 font-bold min-w-[120px]">
+               <Printer className="w-4 h-4 ml-2" /> طباعة
+             </Button>
+             <Button onClick={onClose} variant="outline" className="min-w-[100px]">
+               إغلاق
+             </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -2139,6 +2225,12 @@ function SettingsView() {
   const [receiptWidth, setReceiptWidth] = useState('80');
   const [showTaxOnReceipt, setShowTaxOnReceipt] = useState(true);
   const [showDiscountOnReceipt, setShowDiscountOnReceipt] = useState(true);
+  
+  // Advanced Customization
+  const [snapchat, setSnapchat] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [showQrCode, setShowQrCode] = useState(false);
+  const [receiptFontSize, setReceiptFontSize] = useState('12px');
 
   // Upload state
   const [uploading, setUploading] = useState(false);
@@ -2164,6 +2256,10 @@ function SettingsView() {
       setReceiptWidth(settings.receiptWidth || '80');
       setShowTaxOnReceipt(settings.showTaxOnReceipt !== false);
       setShowDiscountOnReceipt(settings.showDiscountOnReceipt !== false);
+      setSnapchat(settings.snapchat || '');
+      setInstagram(settings.instagram || '');
+      setShowQrCode(settings.showQrCode === true);
+      setReceiptFontSize(settings.receiptFontSize || '12px');
     }
   }, [settings]);
 
@@ -2212,6 +2308,10 @@ function SettingsView() {
       receiptWidth,
       showTaxOnReceipt,
       showDiscountOnReceipt,
+      snapchat,
+      instagram,
+      showQrCode,
+      receiptFontSize,
     });
   };
 
@@ -2601,9 +2701,41 @@ function SettingsView() {
                       </div>
                       <Switch checked={showTaxOnReceipt} onCheckedChange={setShowTaxOnReceipt} />
                     </div>
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30">
+                      <div>
+                        <p className="text-sm font-medium">عرض QR Code</p>
+                        <p className="text-xs text-muted-foreground">طباعة رمز استجابة سريعة للفاتورة</p>
+                      </div>
+                      <Switch checked={showQrCode} onCheckedChange={setShowQrCode} />
+                    </div>
+                    <div className="space-y-1 p-3 rounded-xl bg-muted/30">
+                      <Label className="text-sm font-medium">حجم خط الفاتورة</Label>
+                      <Select value={receiptFontSize} onValueChange={setReceiptFontSize}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10px">صغير (10px)</SelectItem>
+                          <SelectItem value="11px">متوسط (11px)</SelectItem>
+                          <SelectItem value="12px">افتراضي (12px)</SelectItem>
+                          <SelectItem value="14px">كبير (14px)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
                   {/* Custom texts */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                       <Label>حساب سناب شات</Label>
+                       <Input value={snapchat} onChange={e => setSnapchat(e.target.value)} placeholder="مثال: cafe_snap" dir="ltr" />
+                    </div>
+                    <div className="space-y-2">
+                       <Label>حساب انستقرام</Label>
+                       <Input value={instagram} onChange={e => setInstagram(e.target.value)} placeholder="مثال: cafe_insta" dir="ltr" />
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label>نص رأس الفاتورة</Label>
                     <Textarea

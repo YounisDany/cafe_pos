@@ -42,6 +42,7 @@ export async function PUT(request: NextRequest) {
       receiptHeader, receiptFooter, receiptShowLogo,
       taxNumber, currencySymbol, receiptWidth,
       showTaxOnReceipt, showDiscountOnReceipt,
+      snapchat, instagram, showQrCode, receiptFontSize
     } = body;
 
     // Validate colors
@@ -75,6 +76,10 @@ export async function PUT(request: NextRequest) {
     if (receiptWidth !== undefined) updateData.receiptWidth = receiptWidth;
     if (showTaxOnReceipt !== undefined) updateData.showTaxOnReceipt = showTaxOnReceipt;
     if (showDiscountOnReceipt !== undefined) updateData.showDiscountOnReceipt = showDiscountOnReceipt;
+    if (snapchat !== undefined) updateData.snapchat = snapchat;
+    if (instagram !== undefined) updateData.instagram = instagram;
+    if (showQrCode !== undefined) updateData.showQrCode = showQrCode;
+    if (receiptFontSize !== undefined) updateData.receiptFontSize = receiptFontSize;
 
     const company = await db.company.update({
       where: { id: auth.user.companyId },

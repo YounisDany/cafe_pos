@@ -37,6 +37,13 @@ model Company {
   showTaxOnReceipt Boolean @default(true)
   showDiscountOnReceipt Boolean @default(true)
 
+  // Advanced Customization
+  snapchat       String?
+  instagram      String?
+  showQrCode     Boolean  @default(false)
+  receiptFontSize String  @default("12px")
+
+
   branches    Branch[]
   users       User[]
   categories  Category[]
