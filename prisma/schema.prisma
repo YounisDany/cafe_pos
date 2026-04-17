@@ -141,6 +141,7 @@ model Product {
   price       Float
   cost        Float?
   isAvailable Boolean  @default(true)
+  kitchenPrint Boolean @default(false)
   categoryId  String
   companyId   String
   createdAt   DateTime @default(now())

@@ -58,7 +58,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     }
 
-    const { name, nameAr, description, sku, barcode, image, price, cost, categoryId, isAvailable } = body;
+    const { name, nameAr, description, sku, barcode, image, price, cost, categoryId, isAvailable, kitchenPrint } = body;
 
     const product = await db.product.update({
       where: { id },
@@ -73,6 +73,7 @@ export async function PUT(
         ...(cost !== undefined && { cost: cost !== null ? parseFloat(cost) : null }),
         ...(categoryId !== undefined && { categoryId }),
         ...(isAvailable !== undefined && { isAvailable }),
+        ...(kitchenPrint !== undefined && { kitchenPrint }),
       },
       include: { category: true },
     });

@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, nameAr, description, sku, barcode, image, price, cost, categoryId } = body;
+    const { name, nameAr, description, sku, barcode, image, price, cost, categoryId, kitchenPrint } = body;
 
     if (!name || price === undefined || !categoryId) {
       return NextResponse.json({ error: 'Name, price, and categoryId are required' }, { status: 400 });
@@ -79,6 +79,7 @@ export async function POST(request: NextRequest) {
         image,
         price: parseFloat(price),
         cost: cost !== undefined ? parseFloat(cost) : null,
+        kitchenPrint: kitchenPrint !== undefined ? kitchenPrint : false,
         categoryId,
         companyId: auth.user.companyId,
       },
