@@ -447,16 +447,18 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
     : [];
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-gray-100 p-0 print:bg-white overflow-y-auto print:overflow-visible flex flex-col items-center py-10 print:py-0">
+    <div id="receipt-root" className="fixed inset-0 z-[9999] bg-gray-100 overflow-y-auto flex flex-col items-center py-10 print:py-0 print:bg-white print:block">
       <style>{`
         @media print {
           @page { margin: 0; size: 80mm auto; }
-          body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; background: white; }
+          body * { visibility: hidden; }
+          #receipt-root, #receipt-root * { visibility: visible; }
+          #receipt-root { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; background: white; }
           .receipt-container { 
             width: 80mm !important;
-            margin: 0 !important;
-            padding: 5mm !important;
-            overflow: hidden !important;
+            margin: 0 auto !important;
+            padding: 2mm !important;
+            box-shadow: none !important;
           }
           .page-break { page-break-after: always; display: block; height: 1px; visibility: hidden; }
           .no-print { display: none !important; }
@@ -464,7 +466,7 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
       `}</style>
       
       {/* --- CUSTOMER RECEIPT --- */}
-      <div className="bg-white print:shadow-none shadow-xl w-[80mm] receipt-container font-sans text-black mb-8 print:mb-0" dir="rtl" style={{ fontSize, lineHeight: '1.4' }}>
+      <div className="bg-white shadow-xl w-[80mm] receipt-container font-sans text-black mb-8 print:mb-0" dir="rtl" style={{ fontSize, lineHeight: '1.4' }}>
         {/* Header */}
         <div className="text-center mb-3">
           {company?.receiptShowLogo !== false && company?.logo && (
