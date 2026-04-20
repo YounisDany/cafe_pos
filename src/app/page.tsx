@@ -475,10 +475,10 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           #receipt-root, #receipt-root * { visibility: visible; }
           #receipt-root { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; background: white; overflow: visible !important; }
           .receipt-container { 
-            width: 72mm !important; /* Slightly smaller than 80mm to prevent overflow */
-            max-width: 72mm !important;
+            width: 70mm !important; /* Even safer margin for 80mm printers */
+            max-width: 70mm !important;
             margin: 0 auto !important;
-            padding: 2mm 0 !important;
+            padding: 5mm 2mm !important; /* Added more horizontal and vertical padding */
             box-shadow: none !important;
             overflow: hidden !important;
             word-wrap: break-word;
@@ -590,17 +590,17 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           
           {/* Socials & QR */}
           <div className="mt-2 flex flex-col items-center gap-3" style={{ pageBreakInside: 'avoid' }}>
-            <div className="grid grid-cols-1 gap-2 w-full max-w-[180px]">
+            <div className="grid grid-cols-1 gap-2 w-full max-w-[200px]">
               {company?.instagram && (
-                <div className="flex items-center justify-center gap-2 border border-gray-200 py-1 rounded-md">
-                  <Instagram className="w-4 h-4" />
-                  <span className="font-bold text-xs" dir="ltr">@{company.instagram}</span>
+                <div className="flex items-center justify-center gap-2 border border-black/10 py-1.5 rounded-lg bg-gray-50/50">
+                  <Instagram className="w-4 h-4 text-pink-600" />
+                  <span className="font-black text-xs" dir="ltr">@{company.instagram}</span>
                 </div>
               )}
               {company?.snapchat && (
-                <div className="flex items-center justify-center gap-2 border border-gray-200 py-1 rounded-md">
-                  <Ghost className="w-4 h-4" />
-                  <span className="font-bold text-xs" dir="ltr">@{company.snapchat}</span>
+                <div className="flex items-center justify-center gap-2 border border-black/10 py-1.5 rounded-lg bg-gray-50/50">
+                  <Ghost className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                  <span className="font-black text-xs" dir="ltr">@{company.snapchat}</span>
                 </div>
               )}
             </div>
