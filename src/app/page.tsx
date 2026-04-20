@@ -588,32 +588,40 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
             <div className="font-bold text-xs mb-4 whitespace-pre-line">{company.receiptFooter}</div>
           )}
           
-          {/* Socials & QR */}
-          <div className="mt-2 flex flex-col items-center gap-3" style={{ pageBreakInside: 'avoid' }}>
-            <div className="grid grid-cols-1 gap-2 w-full max-w-[200px]">
+          {/* QR Code Section */}
+          <div className="mt-2 flex flex-col items-center gap-2" style={{ pageBreakInside: 'avoid' }}>
+            {company?.showQrCode && (
+              <div className="my-2 p-1 bg-white inline-block border border-black">
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(invoice.invoiceNo || invoice.id)}`} alt="QR" className="w-[80px] h-[80px] filter contrast-125" />
+              </div>
+            )}
+            <p className="mt-1 font-black text-lg tracking-widest">شكراً لزيارتكم!</p>
+          </div>
+
+          <div className="border-t border-black/20 my-4" />
+
+          {/* Socials at the very bottom (Aksa al-fatora) */}
+          <div className="flex flex-col items-center gap-2 pb-4" style={{ pageBreakInside: 'avoid' }}>
+            <div className="flex justify-center gap-4 w-full">
               {company?.instagram && (
-                <div className="flex items-center justify-center gap-2 border border-black/10 py-1.5 rounded-lg bg-gray-50/50">
-                  <Instagram className="w-4 h-4 text-pink-600" />
-                  <span className="font-black text-xs" dir="ltr">@{company.instagram}</span>
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 flex items-center justify-center shadow-sm">
+                    <Instagram className="w-6 h-6 text-white" />
+                  </div>
+                  <span className="font-black text-[10px]" dir="ltr">@{company.instagram}</span>
                 </div>
               )}
               {company?.snapchat && (
-                <div className="flex items-center justify-center gap-2 border border-black/10 py-1.5 rounded-lg bg-gray-50/50">
-                  <Ghost className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                  <span className="font-black text-xs" dir="ltr">@{company.snapchat}</span>
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-10 h-10 rounded-full bg-yellow-400 flex items-center justify-center shadow-sm">
+                    <Ghost className="w-6 h-6 text-white fill-white" />
+                  </div>
+                  <span className="font-black text-[10px]" dir="ltr">@{company.snapchat}</span>
                 </div>
               )}
             </div>
-            
-            {company?.showQrCode && (
-              <div className="my-2 p-1 bg-white inline-block border border-black">
-                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(invoice.invoiceNo || invoice.id)}`} alt="QR" className="w-[90px] h-[90px] filter contrast-125" />
-              </div>
-            )}
-            
-            <p className="mt-2 font-black text-lg tracking-widest">شكراً لزيارتكم!</p>
-            <div className="h-4" /> {/* Extra space at bottom */}
           </div>
+          <div className="h-4" />
         </div>
       </div>
 
