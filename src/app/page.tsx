@@ -622,35 +622,39 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
         <>
           <div className="page-break w-full border-t-4 border-red-500 my-4 print:my-0 no-print" />
           <div className="bg-white print:shadow-none shadow-xl w-[80mm] receipt-container font-sans text-black" dir="rtl">
-            <div className="text-center border-b-4 border-black pb-2 mb-4 px-2">
-              <h2 className="text-4xl font-black mb-2">طلب جديد</h2>
-              <div className="text-3xl font-black bg-black text-white py-2 mb-2 rounded-sm tracking-tighter">
+            <div className="text-center border-b-[6px] border-black pb-3 mb-4 px-2">
+              <h2 className="text-5xl font-black mb-2 tracking-tighter">طلب جديد</h2>
+              <div className="text-5xl font-black bg-black text-white py-3 mb-2 rounded-md tracking-widest">
                 #{invoice.invoiceNo?.slice(-4) || invoice.id?.slice(-4)}
               </div>
-              <div className="flex justify-between text-xs font-bold px-1">
+              <div className="flex justify-between text-sm font-black px-1 mt-2">
                 <span dir="ltr">{new Date(invoice.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
                 <span>كاشير: {invoice.user?.name || invoice.cashierName || '-'}</span>
               </div>
             </div>
 
-            <div className="space-y-4 px-2">
+            <div className="space-y-6 px-2">
               {kitchenItems.map((item: any, i: number) => (
-                <div key={i} className="flex justify-between items-start border-b-2 border-gray-100 pb-3" style={{ pageBreakInside: 'avoid' }}>
-                  <div className="font-black text-2xl leading-tight pl-2 flex-1">
+                <div key={i} className="flex justify-between items-center border-b-4 border-black/10 pb-4" style={{ pageBreakInside: 'avoid' }}>
+                  <div className="font-black text-3xl leading-none pl-2 flex-1">
                     {item.name}
-                    {invoice.note && <div className="text-sm font-bold mt-2 p-2 bg-gray-50 rounded-sm border-r-4 border-black">ملاحظة: {invoice.note}</div>}
+                    {invoice.note && (
+                      <div className="text-lg font-black mt-3 p-3 bg-black text-white rounded-sm border-r-[10px] border-gray-400">
+                        ملاحظة: {invoice.note}
+                      </div>
+                    )}
                   </div>
-                  <div className="font-black text-4xl px-2 py-1 border-2 border-black rounded-md flex-shrink-0 ml-2">
+                  <div className="font-black text-6xl px-4 py-2 border-[5px] border-black rounded-xl flex-shrink-0 ml-3 bg-gray-50">
                     {item.quantity}
                   </div>
                 </div>
               ))}
             </div>
             
-            <div className="mt-8 text-center border-t border-black pt-2 opacity-50">
-              <p className="text-[10px] font-bold">نهاية طلب المطبخ</p>
+            <div className="mt-12 text-center border-t-4 border-black pt-4">
+              <p className="text-lg font-black tracking-widest uppercase">--- نهاية الطلب ---</p>
             </div>
-            <div className="h-8" />
+            <div className="h-12" />
           </div>
         </>
       )}
