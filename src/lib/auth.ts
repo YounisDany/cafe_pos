@@ -6,6 +6,7 @@ export interface AuthUser {
   email: string;
   name: string;
   role: string;
+  phone: string | null;
   companyId: string;
   branchId: string | null;
 }
@@ -28,6 +29,7 @@ export async function getSession(headersList: Headers): Promise<{ user: AuthUser
       email: session.user.email,
       name: session.user.name,
       role: session.user.role,
+      phone: session.user.phone,
       companyId: session.user.companyId,
       branchId: session.user.branchId,
     },

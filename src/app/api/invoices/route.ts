@@ -174,6 +174,7 @@ export async function POST(request: NextRequest) {
         items: true,
         user: { select: { id: true, name: true, email: true } },
         branch: { select: { id: true, name: true } },
+        payments: true,
       },
     });
 

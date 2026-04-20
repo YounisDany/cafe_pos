@@ -434,7 +434,22 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
   const branch = useAppStore(s => s.branch);
 
   useEffect(() => {
-    setTimeout(() => window.print(), 500);
+    // Ensure all images are loaded before printing
+    const images = document.querySelectorAll('#receipt-root img');
+    if (images.length === 0) {
+      setTimeout(() => window.print(), 800);
+    } else {
+      let loaded = 0;
+      images.forEach((img: any) => {
+        if (img.complete) loaded++;
+        else img.onload = () => {
+          loaded++;
+          if (loaded === images.length) setTimeout(() => window.print(), 800);
+        };
+      });
+      // Fallback
+      setTimeout(() => window.print(), 2000);
+    }
   }, []);
 
   const fontSize = company?.receiptFontSize || '12px';
@@ -446,6 +461,10 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
     ? invoice.cartSnapshot.filter((i: any) => i.kitchenPrint)
     : [];
 
+  // Payment method logic
+  const paymentMethod = invoice.paymentMethod || (invoice.payments && invoice.payments.length > 0 ? invoice.payments[0].method : 'cash');
+  const paymentLabel = paymentMethod === 'cash' ? 'نقدي' : paymentMethod === 'card' ? 'بطاقة' : paymentMethod === 'split' ? 'دفع مختلط' : '-';
+
   return (
     <div id="receipt-root" className="fixed inset-0 z-[9999] bg-gray-100 overflow-y-auto flex flex-col items-center py-10 print:py-0 print:bg-white print:block">
       <style>{`
@@ -453,15 +472,19 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           @page { margin: 0; size: 80mm auto; }
           body * { visibility: hidden; }
           #receipt-root, #receipt-root * { visibility: visible; }
-          #receipt-root { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; background: white; }
+          #receipt-root { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; background: white; overflow: visible !important; }
           .receipt-container { 
             width: 80mm !important;
+            max-width: 80mm !important;
             margin: 0 auto !important;
-            padding: 2mm !important;
+            padding: 4mm !important;
             box-shadow: none !important;
+            overflow: hidden !important;
+            word-wrap: break-word;
           }
           .page-break { page-break-after: always; display: block; height: 1px; visibility: hidden; }
           .no-print { display: none !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
       
@@ -470,13 +493,13 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
         {/* Header */}
         <div className="text-center mb-3">
           {company?.receiptShowLogo !== false && company?.logo && (
-             <img src={company.logo} alt="logo" className="max-w-[60px] mx-auto mb-2 mix-blend-multiply grayscale" />
+             <img src={company.logo} alt="logo" className="max-w-[70px] mx-auto mb-2 mix-blend-multiply grayscale" />
           )}
-          <h1 className="text-xl font-black font-sans">{company?.name || 'المقهى'}</h1>
-          {branch?.name && <p className="font-bold">{branch.name}</p>}
-          {branch?.address && <p>{branch.address}</p>}
-          {branch?.phone && <p>هاتف: <span dir="ltr">{branch.phone}</span></p>}
-          {company?.taxNumber && <p>الرقم الضريبي: {company.taxNumber}</p>}
+          <h1 className="text-2xl font-black font-sans mb-1">{company?.name || 'المقهى'}</h1>
+          {branch?.name && <p className="font-bold text-lg">{branch.name}</p>}
+          {branch?.address && <p className="text-sm">{branch.address}</p>}
+          {branch?.phone && <p className="text-sm">هاتف: <span dir="ltr">{branch.phone}</span></p>}
+          {company?.taxNumber && <p className="text-sm font-bold mt-1">الرقم الضريبي: {company.taxNumber}</p>}
         </div>
         
         {company?.receiptHeader && (
@@ -487,17 +510,19 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
 
         <div className="border-t-2 border-dashed border-black my-2" />
         
-        <div className="flex justify-between pb-1 font-bold">
-          <span>رقم الفاتورة:</span>
-          <span>#{invoice.invoiceNo || invoice.id?.slice(-6)}</span>
-        </div>
-        <div className="flex justify-between pb-1">
-          <span>التاريخ:</span>
-          <span dir="ltr">{new Date(invoice.createdAt).toLocaleString('ar-SA')}</span>
-        </div>
-        <div className="flex justify-between pb-1">
-          <span>الكاشير:</span>
-          <span>{invoice.user?.name || invoice.cashierName || '-'}</span>
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between font-bold">
+            <span>رقم الفاتورة:</span>
+            <span>#{invoice.invoiceNo || invoice.id?.slice(-6)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>التاريخ:</span>
+            <span dir="ltr">{new Date(invoice.createdAt).toLocaleString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>الكاشير:</span>
+            <span>{invoice.user?.name || invoice.cashierName || '-'}</span>
+          </div>
         </div>
         
         <div className="border-t-2 border-black border-dashed my-2" />
@@ -514,11 +539,11 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           </thead>
           <tbody>
             {customerItems.map((item: any, i: number) => (
-              <tr key={i} className="align-top" style={{ pageBreakInside: 'avoid' }}>
-                <td className="pt-2 break-words leading-tight pl-1 font-bold">{item.name}</td>
-                <td className="pt-2 text-center">{item.quantity}</td>
-                <td className="pt-2 text-left pr-1 whitespace-nowrap">{fmt(item.price)}</td>
-                <td className="pt-2 text-left font-bold whitespace-nowrap">{fmt(item.price * item.quantity)}</td>
+              <tr key={i} className="align-top border-b border-gray-100" style={{ pageBreakInside: 'avoid' }}>
+                <td className="py-2 break-words leading-tight pl-1 font-bold">{item.name}</td>
+                <td className="py-2 text-center">{item.quantity}</td>
+                <td className="py-2 text-left pr-1 whitespace-nowrap">{fmt(item.price)}</td>
+                <td className="py-2 text-left font-bold whitespace-nowrap">{fmt(item.price * item.quantity)}</td>
               </tr>
             ))}
           </tbody>
@@ -538,16 +563,22 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           
           <div className="border-t-2 border-black my-2" />
           
-          <div className="flex justify-between text-lg font-black items-center bg-gray-100 p-1 rounded-sm">
+          <div className="flex justify-between text-xl font-black items-center bg-gray-100 p-2 rounded-sm">
             <span>الإجمالي:</span><span>{fmt(invoice.total)} {company?.currencySymbol || 'ر.س'}</span>
           </div>
           
           <div className="border-t-2 border-black border-dashed my-2" />
 
-          <div className="flex justify-between mt-2 font-semibold">
+          <div className="flex justify-between mt-2 font-bold">
             <span>طريقة الدفع:</span>
-            <span>{invoice.paymentMethod === 'cash' ? 'نقدي' : invoice.paymentMethod === 'card' ? 'بطاقة' : '-'}</span>
+            <span>{paymentLabel}</span>
           </div>
+          {invoice.changeAmount > 0 && (
+            <div className="flex justify-between text-sm">
+              <span>المتبقي (الفكة):</span>
+              <span>{fmt(invoice.changeAmount)} {company?.currencySymbol || 'ر.س'}</span>
+            </div>
+          )}
         </div>
 
         <div className="border-t-2 border-black border-dashed my-3" />
@@ -555,23 +586,23 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
         {/* Footer */}
         <div className="text-center mt-3">
           {company?.receiptFooter && (
-            <div className="font-bold mb-3">{company.receiptFooter}</div>
+            <div className="font-bold mb-3 whitespace-pre-line">{company.receiptFooter}</div>
           )}
           
           {/* Socials & QR */}
           <div className="mt-3 flex flex-col items-center gap-2" style={{ pageBreakInside: 'avoid' }}>
             <div className="flex flex-col items-center gap-1 font-mono text-sm font-bold" dir="ltr">
-              {company?.snapchat && <p>👻 @{company.snapchat}</p>}
-              {company?.instagram && <p>📸 @{company.instagram}</p>}
+              {company?.snapchat && <p className="flex items-center gap-1">👻 @{company.snapchat}</p>}
+              {company?.instagram && <p className="flex items-center gap-1">📸 @{company.instagram}</p>}
             </div>
             
             {company?.showQrCode && (
-              <div className="my-2 border border-black p-1 bg-white inline-block">
-                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(invoice.invoiceNo || invoice.id)}`} alt="QR" className="w-[80px] h-[80px] filter contrast-125" />
+              <div className="my-2 border-2 border-black p-1 bg-white inline-block">
+                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(invoice.invoiceNo || invoice.id)}`} alt="QR" className="w-[100px] h-[100px] filter contrast-125" />
               </div>
             )}
             
-            <p className="mt-2 font-black mb-2 text-lg">شكراً لزيارتكم!</p>
+            <p className="mt-2 font-black mb-2 text-xl">شكراً لزيارتكم!</p>
           </div>
         </div>
       </div>
@@ -582,9 +613,9 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
           <div className="page-break w-full border-t-4 border-red-500 my-4 print:my-0 no-print" />
           <div className="bg-white print:shadow-none shadow-xl w-[80mm] receipt-container font-sans text-black" dir="rtl">
             <div className="text-center border-b-4 border-black pb-2 mb-3">
-              <h2 className="text-3xl font-black mb-1">طلب جديد</h2>
-              <div className="text-xl font-bold bg-black text-white py-1 mb-2">
-                طلب #{invoice.invoiceNo?.slice(-4) || invoice.id?.slice(-4)}
+              <h2 className="text-4xl font-black mb-1">طلب جديد</h2>
+              <div className="text-2xl font-black bg-black text-white py-2 mb-2 rounded-sm">
+                #{invoice.invoiceNo?.slice(-4) || invoice.id?.slice(-4)}
               </div>
               <div className="flex justify-between text-sm font-bold px-1">
                 <span dir="ltr">{new Date(invoice.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
@@ -592,18 +623,22 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               {kitchenItems.map((item: any, i: number) => (
-                <div key={i} className="flex justify-between items-start border-b border-gray-300 pb-2" style={{ pageBreakInside: 'avoid' }}>
-                  <div className="font-black text-xl leading-tight pl-2">
+                <div key={i} className="flex justify-between items-start border-b-2 border-gray-200 pb-3" style={{ pageBreakInside: 'avoid' }}>
+                  <div className="font-black text-2xl leading-tight pl-2 flex-1">
                     {item.name}
-                    {invoice.note && <div className="text-sm font-bold mt-1 text-gray-700">ملاحظة: {invoice.note}</div>}
+                    {invoice.note && <div className="text-base font-bold mt-2 p-2 bg-gray-100 rounded-sm border-r-4 border-black">ملاحظة: {invoice.note}</div>}
                   </div>
-                  <div className="font-black text-2xl px-2 border-2 border-black rounded-md flex-shrink-0">
+                  <div className="font-black text-3xl px-3 py-1 border-4 border-black rounded-lg flex-shrink-0 ml-2">
                     x{item.quantity}
                   </div>
                 </div>
               ))}
+            </div>
+            
+            <div className="mt-6 text-center border-t-2 border-black pt-2">
+              <p className="text-xs font-bold">نهاية طلب المطبخ</p>
             </div>
           </div>
         </>
