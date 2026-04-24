@@ -78,6 +78,10 @@ export async function POST(request: NextRequest) {
         receiptWidth: user.company.receiptWidth,
         showTaxOnReceipt: user.company.showTaxOnReceipt,
         showDiscountOnReceipt: user.company.showDiscountOnReceipt,
+        snapchat: user.company.snapchat,
+        instagram: user.company.instagram,
+        showQrCode: user.company.showQrCode,
+        receiptFontSize: user.company.receiptFontSize,
       },
       branch: user.branch
         ? {

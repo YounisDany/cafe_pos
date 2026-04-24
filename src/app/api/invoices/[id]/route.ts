@@ -70,7 +70,7 @@ export async function PUT(
       // Delete existing items and recreate
       await db.invoiceItem.deleteMany({ where: { invoiceId: id } });
 
-      const invoiceItems = [];
+      const invoiceItems: { name: string; price: number; quantity: number; total: number; productId?: string }[] = [];
       for (const item of newItems) {
         const total = item.price * item.quantity;
         subtotal += total;

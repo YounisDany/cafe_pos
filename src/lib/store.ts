@@ -8,6 +8,8 @@ export interface CartItem {
   price: number;
   quantity: number;
   total: number;
+  kitchenPrint?: boolean;
+  note?: string;
 }
 
 export interface User {

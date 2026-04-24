@@ -178,6 +178,10 @@ export async function POST(req: Request) {
         receiptWidth: company.receiptWidth,
         showTaxOnReceipt: company.showTaxOnReceipt,
         showDiscountOnReceipt: company.showDiscountOnReceipt,
+        snapchat: company.snapchat,
+        instagram: company.instagram,
+        showQrCode: company.showQrCode,
+        receiptFontSize: company.receiptFontSize,
       },
       branch: {
         id: branch.id,

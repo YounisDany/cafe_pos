@@ -130,18 +130,4 @@
   display: none;
 }
 
-/* Print styles for receipt */
-@media print {
-  body * {
-    visibility: hidden;
-  }
-  .print\:block, .print\:block * {
-    visibility: visible;
-  }
-  .print\:block {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 80mm;
-  }
-}
+/* Print styles handled by ReceiptPrint component inline styles */
