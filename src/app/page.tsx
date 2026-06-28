@@ -87,6 +87,54 @@ const queryClient = new QueryClient({
 // ─── Currency formatter ───
 const fmt = (n: number) => (n ?? 0).toFixed(2);
 
+// ─── Safe date formatter (prevents crash on invalid/null dates) ───
+function safeDate(value: any, type: 'datetime' | 'time' = 'datetime'): string {
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '-';
+    if (type === 'time') return d.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+    return d.toLocaleString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '-';
+  }
+}
+
+// ─── ErrorBoundary for receipt printing ───
+class ReceiptErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError?: () => void },
+  { hasError: boolean; errorMsg: string }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, errorMsg: '' };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMsg: error.message };
+  }
+  componentDidCatch(error: Error) {
+    console.error('Receipt render error:', error);
+    this.props.onError?.();
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center gap-4 p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-red-500" />
+          <h2 className="text-xl font-bold text-red-600">خطأ في تحميل الفاتورة</h2>
+          <p className="text-sm text-gray-500 max-w-sm">{this.state.errorMsg}</p>
+          <button
+            className="mt-4 px-6 py-2 bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700"
+            onClick={() => { this.setState({ hasError: false, errorMsg: '' }); this.props.onError?.(); }}
+          >
+            إغلاق
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── Role helpers ───
 function isOwner(role?: string) { return role === 'owner'; }
 function isManager(role?: string) { return role === 'owner' || role === 'manager'; }
@@ -471,7 +519,7 @@ function CustomerReceipt({ invoice, company, branch }: { invoice: any; company: 
         </div>
         <div className="flex justify-between">
           <span>التاريخ:</span>
-          <span dir="ltr">{new Date(invoice.createdAt).toLocaleString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+          <span dir="ltr">{safeDate(invoice.createdAt)}</span>
         </div>
         <div className="flex justify-between">
           <span>الكاشير:</span>
@@ -609,7 +657,7 @@ function KitchenReceipt({ invoice, kitchenItems }: { invoice: any; kitchenItems:
           #{invoice.invoiceNo?.slice(-4) || invoice.id?.slice(-4)}
         </div>
         <div className="flex justify-between text-sm font-black px-1 mt-2">
-          <span dir="ltr">{new Date(invoice.createdAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}</span>
+          <span dir="ltr">{safeDate(invoice.createdAt, 'time')}</span>
           <span>كاشير: {invoice.user?.name || invoice.cashierName || '-'}</span>
         </div>
       </div>
@@ -655,29 +703,31 @@ function ReceiptPrint({ invoice, onClose }: { invoice: any; onClose: () => void 
   const [printMode, setPrintMode] = useState<'all' | 'customer' | 'kitchen'>('all');
 
   useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
     const images = document.querySelectorAll('#receipt-root img');
     if (images.length === 0) {
-      setTimeout(() => window.print(), 1200);
+      timers.push(setTimeout(() => window.print(), 1200));
     } else {
       let loaded = 0;
       const total = images.length;
       images.forEach((img: any) => {
         if (img.complete) {
           loaded++;
-          if (loaded === total) setTimeout(() => window.print(), 800);
+          if (loaded === total) timers.push(setTimeout(() => window.print(), 800));
         } else {
           img.onload = () => {
             loaded++;
-            if (loaded === total) setTimeout(() => window.print(), 800);
+            if (loaded === total) timers.push(setTimeout(() => window.print(), 800));
           };
           img.onerror = () => {
             loaded++;
-            if (loaded === total) setTimeout(() => window.print(), 800);
+            if (loaded === total) timers.push(setTimeout(() => window.print(), 800));
           };
         }
       });
-      setTimeout(() => window.print(), 3000);
+      timers.push(setTimeout(() => window.print(), 3000));
     }
+    return () => timers.forEach(clearTimeout);
   }, []);
 
   // Determine kitchen items
@@ -884,7 +934,11 @@ function PaymentDialog() {
   }, [paymentDialogOpen]);
 
   if (showReceipt && paidInvoice) {
-    return <ReceiptPrint invoice={paidInvoice} onClose={() => { setShowReceipt(false); setPaidInvoice(null); }} />;
+    return (
+      <ReceiptErrorBoundary onError={() => { setShowReceipt(false); setPaidInvoice(null); }}>
+        <ReceiptPrint invoice={paidInvoice} onClose={() => { setShowReceipt(false); setPaidInvoice(null); }} />
+      </ReceiptErrorBoundary>
+    );
   }
 
   return (
@@ -1333,7 +1387,7 @@ function DashboardView() {
                 {recentInvoices.slice(0, 5).map((inv: any) => (
                   <TableRow key={inv.id}>
                     <TableCell className="font-mono text-xs">#{inv.id?.slice(-6)}</TableCell>
-                    <TableCell className="text-xs">{new Date(inv.createdAt).toLocaleString('ar-SA')}</TableCell>
+                    <TableCell className="text-xs">{safeDate(inv.createdAt)}</TableCell>
                     <TableCell className="font-bold text-amber-700">{fmt(inv.total)} ر.س</TableCell>
                     <TableCell><StatusBadge status={inv.status} /></TableCell>
                   </TableRow>
@@ -1375,7 +1429,11 @@ function InvoicesView() {
   };
 
   if (showReceipt && selectedInvoice) {
-    return <ReceiptPrint invoice={selectedInvoice} onClose={() => setShowReceipt(false)} />;
+    return (
+      <ReceiptErrorBoundary onError={() => setShowReceipt(false)}>
+        <ReceiptPrint invoice={selectedInvoice} onClose={() => setShowReceipt(false)} />
+      </ReceiptErrorBoundary>
+    );
   }
 
   return (
@@ -1420,7 +1478,7 @@ function InvoicesView() {
                 {invoices.map((inv: any) => (
                   <TableRow key={inv.id}>
                     <TableCell className="font-mono text-xs">#{inv.id?.slice(-6)}</TableCell>
-                    <TableCell className="text-xs">{new Date(inv.createdAt).toLocaleString('ar-SA')}</TableCell>
+                    <TableCell className="text-xs">{safeDate(inv.createdAt)}</TableCell>
                     <TableCell className="text-sm">{inv.user?.name || inv.cashierName || '-'}</TableCell>
                     <TableCell className="font-bold text-amber-700">{fmt(inv.total)} ر.س</TableCell>
                     <TableCell className="text-sm">{(() => { const m = inv.payments?.[0]?.method || inv.paymentMethod; return m === 'cash' ? 'نقدي' : m === 'card' ? 'بطاقة' : m === 'split' ? 'مختلط' : '-'; })()}</TableCell>
@@ -1443,7 +1501,7 @@ function InvoicesView() {
         <DialogContent className="sm:max-w-lg" dir="rtl">
           <DialogHeader>
             <DialogTitle>تفاصيل الفاتورة #{selectedInvoice?.id?.slice(-6)}</DialogTitle>
-            <DialogDescription>{new Date(selectedInvoice?.createdAt)?.toLocaleString('ar-SA')}</DialogDescription>
+            <DialogDescription>{safeDate(selectedInvoice?.createdAt)}</DialogDescription>
           </DialogHeader>
           {selectedInvoice && (
             <div className="space-y-4">
@@ -2274,7 +2332,7 @@ function AuditLogsView() {
               <TableBody>
                 {logs.map((log: any, i: number) => (
                   <TableRow key={i}>
-                    <TableCell className="text-xs">{new Date(log.createdAt).toLocaleString('ar-SA')}</TableCell>
+                    <TableCell className="text-xs">{safeDate(log.createdAt)}</TableCell>
                     <TableCell className="text-sm">{log.userName || '-'}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={
